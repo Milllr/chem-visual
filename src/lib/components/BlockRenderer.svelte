@@ -8,9 +8,16 @@
 		block: Block;
 		onupdate: (content: string) => void;
 		ondelete: () => void;
+		onmoveup?: () => void;
+		onmovedown?: () => void;
+		isFirst?: boolean;
+		isLast?: boolean;
+		ondragstart?: (e: DragEvent) => void;
+		ondragover?: (e: DragEvent) => void;
+		ondrop?: (e: DragEvent) => void;
 	}
 
-	let { block, onupdate, ondelete }: Props = $props();
+	let { block, onupdate, ondelete, onmoveup, onmovedown, isFirst = false, isLast = false, ondragstart, ondragover, ondrop }: Props = $props();
 	let editing = $state(false);
 	let editContent = $state(block.content || '');
 	let showDelete = $state(false);
@@ -91,22 +98,58 @@
 	}
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="group relative"
+	class="group relative flex items-start gap-0 rounded-md border border-transparent
+		   hover:border-border/40 transition-colors"
+	draggable="true"
+	ondragstart={ondragstart}
+	ondragover={ondragover}
+	ondrop={ondrop}
 	onpointerdown={() => (showDelete = true)}
 	onpointerup={() => setTimeout(() => (showDelete = false), 2000)}
 >
-	<!-- Delete button (visible on hover/touch) -->
-	{#if showDelete}
-		<button
-			class="absolute -right-2 -top-2 w-7 h-7 bg-red-ink text-white rounded-full
-				   text-xs flex items-center justify-center z-10 shadow-sm
-				   active:scale-90 transition-transform"
-			onclick={(e) => { e.stopPropagation(); ondelete(); }}
-		>
-			✕
-		</button>
-	{/if}
+	<!-- Drag handle + reorder buttons (visible on hover) -->
+	<div class="shrink-0 w-6 flex flex-col items-center pt-1 opacity-0 group-hover:opacity-60 transition-opacity cursor-grab active:cursor-grabbing">
+		{#if onmoveup && !isFirst}
+			<button
+				class="w-5 h-4 flex items-center justify-center text-muted hover:text-ink"
+				onclick={(e) => { e.stopPropagation(); onmoveup?.(); }}
+				aria-label="Move up"
+			>
+				<svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5L5 1L9 5" /></svg>
+			</button>
+		{/if}
+		<!-- Grip dots -->
+		<div class="flex flex-col gap-[2px] py-0.5">
+			<div class="flex gap-[2px]"><span class="w-[3px] h-[3px] rounded-full bg-current"></span><span class="w-[3px] h-[3px] rounded-full bg-current"></span></div>
+			<div class="flex gap-[2px]"><span class="w-[3px] h-[3px] rounded-full bg-current"></span><span class="w-[3px] h-[3px] rounded-full bg-current"></span></div>
+			<div class="flex gap-[2px]"><span class="w-[3px] h-[3px] rounded-full bg-current"></span><span class="w-[3px] h-[3px] rounded-full bg-current"></span></div>
+		</div>
+		{#if onmovedown && !isLast}
+			<button
+				class="w-5 h-4 flex items-center justify-center text-muted hover:text-ink"
+				onclick={(e) => { e.stopPropagation(); onmovedown?.(); }}
+				aria-label="Move down"
+			>
+				<svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1L5 5L9 1" /></svg>
+			</button>
+		{/if}
+	</div>
+
+	<!-- Block content -->
+	<div class="flex-1 min-w-0 relative">
+		<!-- Delete button (visible on hover/touch) -->
+		{#if showDelete}
+			<button
+				class="absolute -right-2 -top-2 w-7 h-7 bg-red-ink text-white rounded-full
+					   text-xs flex items-center justify-center z-10 shadow-sm
+					   active:scale-90 transition-transform"
+				onclick={(e) => { e.stopPropagation(); ondelete(); }}
+			>
+				✕
+			</button>
+		{/if}
 
 	<!-- Text block -->
 	{#if block.type === 'text'}
@@ -179,4 +222,5 @@
 			{/if}
 		</div>
 	{/if}
+	</div>
 </div>

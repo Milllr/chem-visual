@@ -299,13 +299,18 @@
 	let drawingMode = $state(false);
 	let savedDrawings = $derived.by(() => {
 		const page = pages.find(p => p.id === currentPageId);
-		if (!page?.drawings) return [];
-		try { return JSON.parse(page.drawings) as any[]; } catch { return []; }
+		if (!page?.drawings) return { strokes: [], images: [] };
+		try {
+			const parsed = JSON.parse(page.drawings);
+			// Support old format (array of strokes) and new format ({ strokes, images })
+			if (Array.isArray(parsed)) return { strokes: parsed, images: [] };
+			return { strokes: parsed.strokes || [], images: parsed.images || [] };
+		} catch { return { strokes: [], images: [] }; }
 	});
 
-	async function saveDrawing(strokes: any[]) {
+	async function saveDrawing(strokes: any[], images: any[]) {
 		drawingMode = false;
-		const drawingsJson = JSON.stringify(strokes);
+		const drawingsJson = JSON.stringify({ strokes, images });
 		
 		// Update server
 		await fetch(`/api/pages/${currentPageId}`, {
@@ -319,11 +324,135 @@
 			p.id === currentPageId ? { ...p, drawings: drawingsJson } : p
 		);
 	}
+
+	// Block reordering
+	let draggedBlockId = $state<string | null>(null);
+
+	async function moveBlock(blockId: string, direction: 'up' | 'down') {
+		const idx = blocks.findIndex(b => b.id === blockId);
+		if (idx < 0) return;
+		const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+		if (swapIdx < 0 || swapIdx >= blocks.length) return;
+
+		// Swap in local state
+		const newBlocks = [...blocks];
+		[newBlocks[idx], newBlocks[swapIdx]] = [newBlocks[swapIdx], newBlocks[idx]];
+		blocks = newBlocks;
+
+		// Persist new sort orders
+		await Promise.all([
+			fetch(`/api/blocks/${newBlocks[idx].id}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sort_order: idx })
+			}),
+			fetch(`/api/blocks/${newBlocks[swapIdx].id}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sort_order: swapIdx })
+			})
+		]);
+	}
+
+	function handleBlockDragStart(e: DragEvent, blockId: string) {
+		draggedBlockId = blockId;
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', blockId);
+		}
+	}
+
+	function handleBlockDragOver(e: DragEvent) {
+		e.preventDefault();
+		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+	}
+
+	async function handleBlockDrop(e: DragEvent, targetBlockId: string) {
+		e.preventDefault();
+		if (!draggedBlockId || draggedBlockId === targetBlockId) return;
+
+		const fromIdx = blocks.findIndex(b => b.id === draggedBlockId);
+		const toIdx = blocks.findIndex(b => b.id === targetBlockId);
+		if (fromIdx < 0 || toIdx < 0) return;
+
+		// Reorder
+		const newBlocks = [...blocks];
+		const [moved] = newBlocks.splice(fromIdx, 1);
+		newBlocks.splice(toIdx, 0, moved);
+		blocks = newBlocks;
+		draggedBlockId = null;
+
+		// Persist all sort orders
+		await Promise.all(
+			newBlocks.map((b, i) =>
+				fetch(`/api/blocks/${b.id}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ sort_order: i })
+				})
+			)
+		);
+	}
+
+	// Paste handling (images → image block, text → text block)
+	async function handlePaste(e: ClipboardEvent) {
+		// Don't intercept paste when focused on a text input
+		const active = document.activeElement;
+		if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT' || (active as HTMLElement).isContentEditable)) return;
+
+		const items = e.clipboardData?.items;
+		if (!items) return;
+
+		for (const item of items) {
+			if (item.type.startsWith('image/')) {
+				e.preventDefault();
+				const file = item.getAsFile();
+				if (!file) continue;
+				try {
+					const compressed = await compressImage(file);
+					const formData = new FormData();
+					formData.append('file', compressed, `paste-${Date.now()}.webp`);
+					const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+					if (!uploadRes.ok) continue;
+					const { url } = await uploadRes.json();
+					const res = await fetch('/api/blocks', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ page_id: currentPageId, type: 'image', image_url: url })
+					});
+					if (res.ok) {
+						const block: Block = await res.json();
+						blocks = [...blocks, block];
+					}
+				} catch (err) {
+					console.error('Paste image error:', err);
+				}
+				return;
+			}
+		}
+
+		// Text paste → new text block
+		const text = e.clipboardData?.getData('text/plain');
+		if (text && text.trim()) {
+			e.preventDefault();
+			const res = await fetch('/api/blocks', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ page_id: currentPageId, type: 'text', content: text.trim() })
+			});
+			if (res.ok) {
+				const block: Block = await res.json();
+				blocks = [...blocks, block];
+			}
+		}
+	}
 </script>
 
 <svelte:head>
 	<title>{notebook.title} — Chem Journal</title>
 </svelte:head>
+
+<svelte:window onpaste={handlePaste} />
 
 <!-- Hidden file input for camera/gallery -->
 <input
@@ -400,24 +529,40 @@
 					</div>
 				{/if}
 
-				{#each blocks as block (block.id)}
+				{#each blocks as block, i (block.id)}
 					<div id="block-{block.id}" in:fly={{ y: 12, duration: 200 }}>
 						<BlockRenderer
 							{block}
 							onupdate={(content) => updateBlock(block.id, content)}
 							ondelete={() => deleteBlock(block.id)}
+							onmoveup={() => moveBlock(block.id, 'up')}
+							onmovedown={() => moveBlock(block.id, 'down')}
+							isFirst={i === 0}
+							isLast={i === blocks.length - 1}
+							ondragstart={(e) => handleBlockDragStart(e, block.id)}
+							ondragover={handleBlockDragOver}
+							ondrop={(e) => handleBlockDrop(e, block.id)}
 						/>
 					</div>
 				{/each}
 
-				<!-- Drawing overlay (shows saved drawings) -->
-				{#if savedDrawings.length > 0 && !drawingMode}
-					<div class="absolute inset-0 pointer-events-none">
+				<!-- Drawing overlay (shows saved drawings — click to edit) -->
+				{#if (savedDrawings.strokes.length > 0 || savedDrawings.images.length > 0) && !drawingMode}
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="absolute inset-0 cursor-pointer group/drawing"
+						onclick={() => (drawingMode = true)}
+					>
+						<div class="absolute top-2 right-2 opacity-0 group-hover/drawing:opacity-100 transition-opacity
+									bg-warm/80 backdrop-blur-sm text-[11px] text-muted px-2 py-1 rounded-md border border-border/50">
+							✏️ Edit drawing
+						</div>
 						<svg class="w-full h-full" preserveAspectRatio="none">
-							{#each savedDrawings as stroke}
+							{#each savedDrawings.strokes as stroke}
 								{#if stroke.points.length >= 2}
 									<path
-										d={stroke.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' ')}
+										d={stroke.points.map((p: [number, number], i: number) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' ')}
 										stroke={stroke.color === 'eraser' ? 'transparent' : stroke.color}
 										stroke-width={stroke.width}
 										fill="none"
@@ -447,7 +592,8 @@
 <!-- Drawing canvas -->
 {#if drawingMode}
 	<DrawingCanvas
-		strokes={savedDrawings}
+		strokes={savedDrawings.strokes}
+		images={savedDrawings.images}
 		onsave={saveDrawing}
 		onclose={() => (drawingMode = false)}
 	/>
