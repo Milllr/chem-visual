@@ -4,22 +4,26 @@
 	interface Props {
 		open: boolean;
 		onclose: () => void;
-		oncreate: (data: { title: string; description: string; color: string; emoji: string }) => void;
+		oncreate: (data: { title: string; description: string; color: string; emoji: string; goal: string; tracked: number }) => void;
 	}
 
 	let { open, onclose, oncreate }: Props = $props();
 	let title = $state('');
 	let description = $state('');
 	let color = $state(NOTEBOOK_COLORS[0]);
+	let goal = $state('');
+	let tracked = $state(true);
 	let creating = $state(false);
 
 	async function handleCreate() {
 		if (!title.trim() || creating) return;
 		creating = true;
-		await oncreate({ title: title.trim(), description: description.trim(), color, emoji: '' });
+		await oncreate({ title: title.trim(), description: description.trim(), color, emoji: '', goal: goal.trim(), tracked: tracked ? 1 : 0 });
 		title = '';
 		description = '';
 		color = NOTEBOOK_COLORS[0];
+		goal = '';
+		tracked = true;
 		creating = false;
 	}
 </script>
@@ -30,8 +34,8 @@
 
 	<!-- Modal -->
 	<div
-		class="fixed inset-x-4 top-[15dvh] z-50 mx-auto max-w-sm bg-cream rounded-lg
-			   shadow-lg border border-dashed border-border overflow-hidden"
+		class="fixed inset-x-4 top-[8dvh] z-50 mx-auto max-w-sm bg-cream rounded-lg
+			   shadow-lg border border-dashed border-border overflow-hidden max-h-[84dvh] overflow-y-auto"
 		style="animation: slideUp 0.2s ease-out"
 	>
 		<div class="px-5 pt-5 pb-4">
@@ -51,14 +55,25 @@
 			<input
 				type="text"
 				class="w-full bg-warm/50 border border-border rounded-lg px-3 py-2 text-sm
-					   outline-none placeholder:text-muted/40 focus:border-muted transition-colors mb-4"
+					   outline-none placeholder:text-muted/40 focus:border-muted transition-colors mb-2.5"
 				placeholder="Short description (optional)"
 				bind:value={description}
 			/>
 
+			<!-- Goal -->
+			<label class="text-xs text-muted mb-1 block">Project Goal</label>
+			<textarea
+				class="w-full bg-warm/50 border border-border rounded-lg px-3 py-2 text-sm
+					   outline-none placeholder:text-muted/40 focus:border-muted transition-colors mb-3
+					   resize-none"
+				placeholder="What are you trying to achieve? (helps AI give better advice)"
+				bind:value={goal}
+				rows="2"
+			></textarea>
+
 			<!-- Color picker -->
 			<p class="text-xs text-muted mb-1.5">Color</p>
-			<div class="flex flex-wrap gap-1.5 mb-5">
+			<div class="flex flex-wrap gap-1.5 mb-4">
 				{#each NOTEBOOK_COLORS as c}
 					<button
 						class="w-7 h-7 rounded-full transition-all border-2"
@@ -69,6 +84,26 @@
 						onclick={() => (color = c)}
 					></button>
 				{/each}
+			</div>
+
+			<!-- Tracked toggle -->
+			<div class="flex items-center justify-between mb-5 px-1">
+				<div>
+					<p class="text-sm text-ink">Track progress</p>
+					<p class="text-[11px] text-muted">Show next steps on home screen</p>
+				</div>
+				<button
+					class="w-10 h-6 rounded-full transition-colors relative"
+					class:bg-accent={tracked}
+					class:bg-border={!tracked}
+					onclick={() => (tracked = !tracked)}
+				>
+					<span
+						class="absolute top-0.5 w-5 h-5 bg-cream rounded-full shadow transition-transform"
+						class:translate-x-4={tracked}
+						class:translate-x-0.5={!tracked}
+					></span>
+				</button>
 			</div>
 
 			<!-- Actions -->

@@ -241,16 +241,12 @@
 			<div class="flex gap-1 items-center">
 				{#each widths as w}
 					<button
-						class="rounded-full transition-all flex items-center justify-center"
-						class:bg-ink={penWidth === w}
-						class:bg-muted/30={penWidth !== w}
+						class="rounded-full transition-all flex items-center justify-center {penWidth === w ? 'bg-ink' : 'bg-border'}"
 						style="width: {Math.max(w * 3, 12)}px; height: {Math.max(w * 3, 12)}px"
 						onclick={() => (penWidth = w)}
 					>
 						<span
-							class="rounded-full"
-							class:bg-cream={penWidth === w}
-							class:bg-muted={penWidth !== w}
+							class="rounded-full {penWidth === w ? 'bg-cream' : 'bg-muted'}"
 							style="width: {Math.max(w, 2)}px; height: {Math.max(w, 2)}px"
 						></span>
 					</button>

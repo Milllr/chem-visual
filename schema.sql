@@ -47,6 +47,20 @@ CREATE TABLE IF NOT EXISTS smiles_cache (
   created TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS next_steps (
+  notebook_id TEXT NOT NULL REFERENCES notebook(id) ON DELETE CASCADE,
+  steps       TEXT NOT NULL DEFAULT '[]',
+  generated   TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (notebook_id)
+);
+
+CREATE TABLE IF NOT EXISTS next_steps_history (
+  id          TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL REFERENCES notebook(id) ON DELETE CASCADE,
+  step        TEXT NOT NULL,
+  created     TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_page_notebook ON page(notebook_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_block_page ON block(page_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_chat_notebook ON chat_message(notebook_id, created);

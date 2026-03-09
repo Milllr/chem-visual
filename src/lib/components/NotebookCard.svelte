@@ -5,9 +5,10 @@
 		notebook: Notebook;
 		onclick: () => void;
 		ondelete?: () => void;
+		onedit?: () => void;
 	}
 
-	let { notebook, onclick, ondelete }: Props = $props();
+	let { notebook, onclick, ondelete, onedit }: Props = $props();
 	let confirming = $state(false);
 
 	function timeAgo(dateStr: string): string {
@@ -86,6 +87,18 @@
 				</div>
 			</div>
 		{:else}
+			<!-- Edit button -->
+			{#if onedit}
+				<button
+					class="absolute top-2 right-9 w-6 h-6 rounded-md flex items-center justify-center
+						   text-muted/0 group-hover:text-muted/50 hover:!text-accent hover:bg-warm
+						   transition-all z-10"
+					onclick={(e) => { e.stopPropagation(); onedit(); }}
+					aria-label="Edit notebook"
+				>
+					<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 1l2.5 2.5L4 10.5H1.5V8z" /></svg>
+				</button>
+			{/if}
 			<button
 				class="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center
 					   text-muted/0 group-hover:text-muted/50 hover:!text-red-ink hover:bg-warm

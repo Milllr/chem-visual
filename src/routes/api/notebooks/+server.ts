@@ -17,14 +17,14 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	const db = platform?.env?.DB;
 	if (!db) return json({ error: 'DB unavailable' }, { status: 500 });
 
-	const { title, description, color, emoji, goal } = await request.json();
+	const { title, description, color, emoji, goal, tracked } = await request.json();
 	const id = generateId();
 
 	await db
 		.prepare(
-			'INSERT INTO notebook (id, title, description, color, emoji, goal) VALUES (?, ?, ?, ?, ?, ?)'
+			'INSERT INTO notebook (id, title, description, color, emoji, goal, tracked) VALUES (?, ?, ?, ?, ?, ?, ?)'
 		)
-		.bind(id, title || 'Untitled', description || '', color || '#C4A882', emoji || '', goal || '')
+		.bind(id, title || 'Untitled', description || '', color || '#C4A882', emoji || '', goal || '', tracked ?? 1)
 		.run();
 
 	// Create first page automatically

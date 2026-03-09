@@ -5,11 +5,13 @@
 	import type { Notebook } from '$lib/db';
 	import NotebookCard from '$lib/components/NotebookCard.svelte';
 	import NewNotebookModal from '$lib/components/NewNotebookModal.svelte';
+	import EditNotebookModal from '$lib/components/EditNotebookModal.svelte';
 	import MethLogo from '$lib/components/MethLogo.svelte';
 
 	let { data }: { data: PageData } = $props();
 	let notebooks = $state<Notebook[]>(data.notebooks);
 	let showNewModal = $state(false);
+	let editingNotebook = $state<Notebook | null>(null);
 	let nextSteps = $state<{ notebook_id: string; notebook_title: string; step: string }[]>([]);
 	let loadingSteps = $state(false);
 
@@ -25,15 +27,15 @@
 	let greeting = $state(getGreeting());
 
 	onMount(async () => {
-		// Load AI next steps for tracked notebooks
+		// Load next steps (stored or fresh)
 		const tracked = notebooks.filter(n => n.tracked !== 0);
 		if (tracked.length > 0) {
 			loadingSteps = true;
 			try {
 				const res = await fetch('/api/next-steps', { method: 'POST' });
 				if (res.ok) {
-					const data = await res.json();
-					nextSteps = data.steps || [];
+					const result = await res.json();
+					nextSteps = result.steps || [];
 				}
 			} catch {
 				// silently fail
@@ -47,6 +49,8 @@
 		description: string;
 		color: string;
 		emoji: string;
+		goal: string;
+		tracked: number;
 	}) {
 		const res = await fetch('/api/notebooks', {
 			method: 'POST',
@@ -58,6 +62,20 @@
 			notebooks = [nb, ...notebooks];
 			showNewModal = false;
 			goto(`/notebook/${nb.id}`);
+		}
+	}
+
+	async function saveNotebookEdit(updates: Partial<Notebook>) {
+		if (!editingNotebook) return;
+		const res = await fetch(`/api/notebooks/${editingNotebook.id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(updates)
+		});
+		if (res.ok) {
+			const updated: Notebook = await res.json();
+			notebooks = notebooks.map(n => n.id === updated.id ? updated : n);
+			editingNotebook = null;
 		}
 	}
 
@@ -114,7 +132,7 @@
 						class="w-full text-left rounded-lg border border-dashed border-border p-3
 							   bg-warm/20 hover:bg-warm/40 active:bg-warm transition-colors"
 						onclick={() => {
-							const nb = notebooks.find(n => n.id === ns.notebook_id);
+							const nb = notebooks.find(n => n.title === ns.notebook_title || n.id === ns.notebook_id);
 							if (nb) openNotebook(nb.id);
 						}}
 					>
@@ -129,8 +147,13 @@
 	<!-- Notebooks grid -->
 	{#if notebooks.length > 0}
 		<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-			{#each notebooks as notebook (notebook.id)}
-				<NotebookCard {notebook} onclick={() => openNotebook(notebook.id)} ondelete={() => deleteNotebook(notebook.id)} />
+			{#each notebooks as nb (nb.id)}
+				<NotebookCard
+					notebook={nb}
+					onclick={() => openNotebook(nb.id)}
+					ondelete={() => deleteNotebook(nb.id)}
+					onedit={() => (editingNotebook = nb)}
+				/>
 			{/each}
 		</div>
 	{:else}
@@ -158,3 +181,13 @@
 	onclose={() => (showNewModal = false)}
 	oncreate={createNotebook}
 />
+
+<!-- Edit notebook modal (from home screen) -->
+{#if editingNotebook}
+	<EditNotebookModal
+		open={true}
+		notebook={editingNotebook}
+		onclose={() => (editingNotebook = null)}
+		onsave={saveNotebookEdit}
+	/>
+{/if}
