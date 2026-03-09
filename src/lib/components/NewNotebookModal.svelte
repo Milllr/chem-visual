@@ -93,15 +93,15 @@
 					<p class="text-[11px] text-muted">Show next steps on home screen</p>
 				</div>
 				<button
-					class="w-10 h-6 rounded-full transition-colors relative"
+					class="w-11 h-6 rounded-full transition-colors relative flex-shrink-0"
 					class:bg-accent={tracked}
 					class:bg-border={!tracked}
 					onclick={() => (tracked = !tracked)}
+					type="button"
 				>
 					<span
-						class="absolute top-0.5 w-5 h-5 bg-cream rounded-full shadow transition-transform"
-						class:translate-x-4={tracked}
-						class:translate-x-0.5={!tracked}
+						class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200"
+						style="transform: translateX({tracked ? '20px' : '0px'})"
 					></span>
 				</button>
 			</div>

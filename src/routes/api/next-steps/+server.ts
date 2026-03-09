@@ -99,7 +99,7 @@ Only return the JSON array, no other text.`;
 				Authorization: `Bearer ${apiKey}`
 			},
 			body: JSON.stringify({
-				model: 'gpt-4o-mini',
+				model: 'gpt-5-mini',
 				messages: [{ role: 'user', content: prompt }],
 				max_tokens: 500,
 				temperature: 0.5

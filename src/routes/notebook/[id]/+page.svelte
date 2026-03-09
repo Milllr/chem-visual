@@ -297,32 +297,36 @@
 
 	// Drawing
 	let drawingMode = $state(false);
-	let savedDrawings = $derived.by(() => {
-		const page = pages.find(p => p.id === currentPageId);
-		if (!page?.drawings) return { strokes: [], images: [] };
-		try {
-			const parsed = JSON.parse(page.drawings);
-			// Support old format (array of strokes) and new format ({ strokes, images })
-			if (Array.isArray(parsed)) return { strokes: parsed, images: [] };
-			return { strokes: parsed.strokes || [], images: parsed.images || [] };
-		} catch { return { strokes: [], images: [] }; }
-	});
 
-	async function saveDrawing(strokes: any[], images: any[]) {
+	async function saveDrawing(imageBlob: Blob) {
 		drawingMode = false;
-		const drawingsJson = JSON.stringify({ strokes, images });
-		
-		// Update server
-		await fetch(`/api/pages/${currentPageId}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ drawings: drawingsJson })
-		});
-		
-		// Update local state
-		pages = pages.map(p => 
-			p.id === currentPageId ? { ...p, drawings: drawingsJson } : p
-		);
+
+		try {
+			// Upload the drawing image to R2
+			const formData = new FormData();
+			formData.append('file', imageBlob, `drawing-${Date.now()}.png`);
+			const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+			if (!uploadRes.ok) throw new Error('Upload failed');
+			const { url } = await uploadRes.json();
+
+			// Create an image block
+			const res = await fetch('/api/blocks', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					page_id: currentPageId,
+					type: 'image',
+					image_url: url,
+					metadata: { source: 'drawing' }
+				})
+			});
+			if (res.ok) {
+				const block: Block = await res.json();
+				blocks = [...blocks, block];
+			}
+		} catch (err) {
+			console.error('Drawing save error:', err);
+		}
 	}
 
 	// Block reordering
@@ -545,35 +549,6 @@
 						/>
 					</div>
 				{/each}
-
-				<!-- Drawing overlay (shows saved drawings — click to edit) -->
-				{#if (savedDrawings.strokes.length > 0 || savedDrawings.images.length > 0) && !drawingMode}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="absolute inset-0 cursor-pointer group/drawing"
-						onclick={() => (drawingMode = true)}
-					>
-						<div class="absolute top-2 right-2 opacity-0 group-hover/drawing:opacity-100 transition-opacity
-									bg-warm/80 backdrop-blur-sm text-[11px] text-muted px-2 py-1 rounded-md border border-border/50">
-							✏️ Edit drawing
-						</div>
-						<svg class="w-full h-full" preserveAspectRatio="none">
-							{#each savedDrawings.strokes as stroke}
-								{#if stroke.points.length >= 2}
-									<path
-										d={stroke.points.map((p: [number, number], i: number) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' ')}
-										stroke={stroke.color === 'eraser' ? 'transparent' : stroke.color}
-										stroke-width={stroke.width}
-										fill="none"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								{/if}
-							{/each}
-						</svg>
-					</div>
-				{/if}
 			</div>
 		{/key}
 	</main>
@@ -592,8 +567,6 @@
 <!-- Drawing canvas -->
 {#if drawingMode}
 	<DrawingCanvas
-		strokes={savedDrawings.strokes}
-		images={savedDrawings.images}
 		onsave={saveDrawing}
 		onclose={() => (drawingMode = false)}
 	/>

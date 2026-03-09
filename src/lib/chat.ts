@@ -72,7 +72,7 @@ export async function callOpenAI(
 			Authorization: `Bearer ${apiKey}`
 		},
 		body: JSON.stringify({
-			model: 'gpt-4o',
+			model: 'gpt-5.1',
 			messages: apiMessages,
 			max_tokens: 1500,
 			temperature: 0.3
@@ -94,7 +94,7 @@ export async function callPerplexity(
 			Authorization: `Bearer ${apiKey}`
 		},
 		body: JSON.stringify({
-			model: 'sonar',
+			model: 'sonar-pro',
 			messages,
 			max_tokens: 1500
 		})
@@ -112,7 +112,7 @@ export async function formulaToSmiles(formula: string, apiKey: string): Promise<
 			Authorization: `Bearer ${apiKey}`
 		},
 		body: JSON.stringify({
-			model: 'gpt-4o-mini',
+			model: 'gpt-5-mini',
 			messages: [
 				{
 					role: 'system',
