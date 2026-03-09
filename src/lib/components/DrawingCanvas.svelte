@@ -18,9 +18,10 @@
 	interface Props {
 		onsave: (imageBlob: Blob) => void;
 		onclose: () => void;
+		initialImageUrl?: string;
 	}
 
-	let { onsave, onclose }: Props = $props();
+	let { onsave, onclose, initialImageUrl }: Props = $props();
 
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D | null = null;
@@ -53,6 +54,30 @@
 	onMount(() => {
 		resizeCanvas();
 		window.addEventListener('resize', resizeCanvas);
+		// Load initial image for re-editing
+		if (initialImageUrl) {
+			const img = new Image();
+			img.crossOrigin = 'anonymous';
+			img.onload = () => {
+				if (!canvas) return;
+				const rect = canvas.getBoundingClientRect();
+				let w = img.width, h = img.height;
+				const maxW = rect.width * 0.9, maxH = rect.height * 0.8;
+				if (w > maxW) { h *= maxW / w; w = maxW; }
+				if (h > maxH) { w *= maxH / h; h = maxH; }
+				// Convert to data URL for consistent handling
+				const tmpCanvas = document.createElement('canvas');
+				tmpCanvas.width = img.width;
+				tmpCanvas.height = img.height;
+				const tmpCtx = tmpCanvas.getContext('2d')!;
+				tmpCtx.drawImage(img, 0, 0);
+				const dataUrl = tmpCanvas.toDataURL('image/png');
+				loadedImgs.set(dataUrl, img);
+				allImages = [{ dataUrl, x: (rect.width - w) / 2, y: (rect.height - h) / 2, width: w, height: h }];
+				redraw();
+			};
+			img.src = initialImageUrl;
+		}
 		return () => window.removeEventListener('resize', resizeCanvas);
 	});
 
@@ -459,7 +484,7 @@
 				onclick={save}
 				disabled={allStrokes.length === 0 && allImages.length === 0}
 			>
-				Insert
+				{initialImageUrl ? 'Save' : 'Insert'}
 			</button>
 		</div>
 	</div>

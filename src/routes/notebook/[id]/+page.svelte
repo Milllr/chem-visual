@@ -297,9 +297,12 @@
 
 	// Drawing
 	let drawingMode = $state(false);
+	let editingDrawingBlock = $state<Block | null>(null);
 
 	async function saveDrawing(imageBlob: Blob) {
+		const editBlock = editingDrawingBlock;
 		drawingMode = false;
+		editingDrawingBlock = null;
 
 		try {
 			// Upload the drawing image to R2
@@ -309,24 +312,42 @@
 			if (!uploadRes.ok) throw new Error('Upload failed');
 			const { url } = await uploadRes.json();
 
-			// Create an image block
-			const res = await fetch('/api/blocks', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					page_id: currentPageId,
-					type: 'image',
-					image_url: url,
-					metadata: { source: 'drawing' }
-				})
-			});
-			if (res.ok) {
-				const block: Block = await res.json();
-				blocks = [...blocks, block];
+			if (editBlock) {
+				// Update existing drawing block
+				const res = await fetch(`/api/blocks/${editBlock.id}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ image_url: url })
+				});
+				if (res.ok) {
+					const updated: Block = await res.json();
+					blocks = blocks.map(b => b.id === updated.id ? updated : b);
+				}
+			} else {
+				// Create new image block
+				const res = await fetch('/api/blocks', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						page_id: currentPageId,
+						type: 'image',
+						image_url: url,
+						metadata: { source: 'drawing' }
+					})
+				});
+				if (res.ok) {
+					const block: Block = await res.json();
+					blocks = [...blocks, block];
+				}
 			}
 		} catch (err) {
 			console.error('Drawing save error:', err);
 		}
+	}
+
+	function startEditDrawing(block: Block) {
+		editingDrawingBlock = block;
+		drawingMode = true;
 	}
 
 	// Block reordering
@@ -545,8 +566,7 @@
 							isLast={i === blocks.length - 1}
 							ondragstart={(e) => handleBlockDragStart(e, block.id)}
 							ondragover={handleBlockDragOver}
-							ondrop={(e) => handleBlockDrop(e, block.id)}
-						/>
+							ondrop={(e) => handleBlockDrop(e, block.id)}						oneditdrawing={() => startEditDrawing(block)}						/>
 					</div>
 				{/each}
 			</div>
@@ -568,7 +588,8 @@
 {#if drawingMode}
 	<DrawingCanvas
 		onsave={saveDrawing}
-		onclose={() => (drawingMode = false)}
+		onclose={() => { drawingMode = false; editingDrawingBlock = null; }}
+		initialImageUrl={editingDrawingBlock?.image_url || undefined}
 	/>
 {/if}
 

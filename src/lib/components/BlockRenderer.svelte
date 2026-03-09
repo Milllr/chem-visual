@@ -15,9 +15,10 @@
 		ondragstart?: (e: DragEvent) => void;
 		ondragover?: (e: DragEvent) => void;
 		ondrop?: (e: DragEvent) => void;
+		oneditdrawing?: () => void;
 	}
 
-	let { block, onupdate, ondelete, onmoveup, onmovedown, isFirst = false, isLast = false, ondragstart, ondragover, ondrop }: Props = $props();
+	let { block, onupdate, ondelete, onmoveup, onmovedown, isFirst = false, isLast = false, ondragstart, ondragover, ondrop, oneditdrawing }: Props = $props();
 	let editing = $state(false);
 	let editContent = $state(block.content || '');
 	let showDelete = $state(false);
@@ -178,13 +179,23 @@
 	<!-- Image block -->
 	{:else if block.type === 'image'}
 		{@const isDrawing = getMetadata().source === 'drawing'}
-		<div class="rounded-lg overflow-hidden border border-dashed border-border {isDrawing ? 'bg-white' : ''}">
+		<div class="rounded-lg overflow-hidden border border-dashed border-border {isDrawing ? 'bg-white' : ''} relative">
 			<img
 				src={block.image_url}
 				alt={isDrawing ? 'Drawing' : 'Lab photo'}
 				class="w-full h-auto {isDrawing ? 'object-contain' : 'max-h-[300px] object-cover'}"
 				loading="lazy"
 			/>
+			{#if isDrawing && oneditdrawing}
+				<button
+					class="absolute bottom-2 right-2 px-2.5 py-1 rounded-md bg-cream/90 border border-border
+						   text-[11px] text-muted hover:text-ink hover:bg-cream transition-colors
+						   opacity-0 group-hover:opacity-100 active:scale-95"
+					onclick={(e) => { e.stopPropagation(); oneditdrawing?.(); }}
+				>
+					✏️ Edit Drawing
+				</button>
+			{/if}
 			{#if block.content}
 				<p class="text-xs text-muted px-2 py-1.5 bg-warm/30 italic">
 					{block.content}

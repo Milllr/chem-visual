@@ -74,7 +74,7 @@ export async function callOpenAI(
 		body: JSON.stringify({
 			model: 'gpt-5.1',
 			messages: apiMessages,
-			max_tokens: 1500,
+			max_completion_tokens: 1500,
 			temperature: 0.3
 		})
 	});
@@ -121,7 +121,7 @@ export async function formulaToSmiles(formula: string, apiKey: string): Promise<
 				},
 				{ role: 'user', content: formula }
 			],
-			max_tokens: 100,
+			max_completion_tokens: 100,
 			temperature: 0
 		})
 	});
