@@ -9,47 +9,61 @@
 
 <svg
 	xmlns="http://www.w3.org/2000/svg"
-	viewBox="0 0 120 58"
+	viewBox="0 0 140 58"
 	fill="none"
 	stroke="currentColor"
 	stroke-width="1.5"
 	stroke-linecap="round"
 	stroke-linejoin="round"
 	width={size}
-	height={size * 58 / 120}
+	height={size * 58 / 140}
 	class={className}
 	aria-label="Methamphetamine molecule"
 >
 	<!-- Benzene ring -->
-	<path d="M28,14 L40,21 L40,35 L28,42 L16,35 L16,21 Z" />
+	<polygon points="28,13 40.5,20 40.5,34 28,41 15.5,34 15.5,20" />
 
-	<!-- Double bonds (Kekulé structure) -->
-	<line x1="27" y1="17.5" x2="37" y2="23" />
-	<line x1="37" y1="33.5" x2="27" y2="39.5" />
-	<line x1="18.5" y1="33" x2="18.5" y2="23" />
+	<!-- Kekulé double bonds -->
+	<line x1="27" y1="16.5" x2="37.5" y2="22.5" />
+	<line x1="37.5" y1="31.5" x2="27" y2="37.5" />
+	<line x1="18" y1="32" x2="18" y2="22" />
 
-	<!-- Chain: ring → C₂ -->
-	<line x1="40" y1="35" x2="53" y2="26" />
-	<!-- C₂ → C₃ -->
-	<line x1="53" y1="26" x2="66" y2="35" />
+	<!-- Ring → CH₂ -->
+	<line x1="40.5" y1="34" x2="54" y2="25" />
+	<!-- CH₂ → C* (stereocenter) -->
+	<line x1="54" y1="25" x2="67.5" y2="34" />
 
-	<!-- Methyl branch down from C₃ -->
-	<line x1="66" y1="35" x2="66" y2="48" />
+	<!-- CH₃ branch down from C* -->
+	<line x1="67.5" y1="34" x2="67.5" y2="50" />
 
-	<!-- C₃ → N -->
-	<line x1="66" y1="35" x2="74" y2="30" />
+	<!-- C* → N -->
+	<line x1="67.5" y1="34" x2="78" y2="28" />
 
 	<!-- N → terminal CH₃ -->
-	<line x1="88" y1="30" x2="100" y2="39" />
+	<line x1="92" y1="28" x2="105" y2="37" />
 
-	<!-- NH label -->
+	<!-- N—H bond (up) -->
+	<line x1="85" y1="21" x2="85" y2="10" />
+
+	<!-- Atom labels -->
 	<text
-		x="76"
-		y="33"
-		font-size="9"
+		x="85"
+		y="31"
+		font-size="11"
+		text-anchor="middle"
+		font-family="Arial, Helvetica, sans-serif"
+		font-weight="bold"
 		fill="currentColor"
 		stroke="none"
-		font-family="'Lora', Georgia, serif"
-		font-style="italic"
-	>NH</text>
+	>N</text>
+	<text
+		x="85"
+		y="9"
+		font-size="9"
+		text-anchor="middle"
+		font-family="Arial, Helvetica, sans-serif"
+		font-weight="bold"
+		fill="currentColor"
+		stroke="none"
+	>H</text>
 </svg>
