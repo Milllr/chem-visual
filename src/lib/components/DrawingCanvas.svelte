@@ -586,7 +586,7 @@
 				class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-colors min-w-[44px]"
 				class:bg-accent={tool === 'pen'} class:text-cream={tool === 'pen'}
 				class:active:bg-warm={tool !== 'pen'}
-				onclick={() => (tool = 'pen')}
+				onclick={() => { tool = 'pen'; showShapes = false; }}
 			>
 				<svg class="w-5 h-5" class:text-cream={tool === 'pen'} class:text-muted={tool !== 'pen'} viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M12 3 L17 8 L7 18 H2 V13 Z" /><path d="M10 5 L15 10" />
@@ -599,7 +599,7 @@
 				class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-colors min-w-[44px]"
 				class:bg-accent={tool === 'highlighter'} class:text-cream={tool === 'highlighter'}
 				class:active:bg-warm={tool !== 'highlighter'}
-				onclick={() => (tool = 'highlighter')}
+				onclick={() => { tool = 'highlighter'; showShapes = false; }}
 			>
 				<svg class="w-5 h-5" class:text-cream={tool === 'highlighter'} class:text-muted={tool !== 'highlighter'} viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M14 2 L18 6 L9 15 L3 17 L5 11 Z" /><path d="M5 11 L9 15" /><path d="M2 18 H8" />
@@ -612,7 +612,7 @@
 				class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-colors min-w-[44px]"
 				class:bg-accent={tool === 'eraser'} class:text-cream={tool === 'eraser'}
 				class:active:bg-warm={tool !== 'eraser'}
-				onclick={() => (tool = 'eraser')}
+				onclick={() => { tool = 'eraser'; showShapes = false; }}
 			>
 				<svg class="w-5 h-5" class:text-cream={tool === 'eraser'} class:text-muted={tool !== 'eraser'} viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M8 4 L17 13 L12 18 H6 L2 14 Z" /><path d="M5 11 L12 4" /><path d="M3 18 H18" />
@@ -677,7 +677,7 @@
 				class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-colors min-w-[44px]"
 				class:bg-accent={tool === 'move'} class:text-cream={tool === 'move'}
 				class:active:bg-warm={tool !== 'move'}
-				onclick={() => (tool = 'move')}
+				onclick={() => { tool = 'move'; showShapes = false; }}
 			>
 				<svg class="w-5 h-5" class:text-cream={tool === 'move'} class:text-muted={tool !== 'move'} viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M10 2 V18 M2 10 H18" /><path d="M10 2 L7 5 M10 2 L13 5" /><path d="M10 18 L7 15 M10 18 L13 15" /><path d="M2 10 L5 7 M2 10 L5 13" /><path d="M18 10 L15 7 M18 10 L15 13" />

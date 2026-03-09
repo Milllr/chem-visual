@@ -97,6 +97,53 @@
 	function renderMarkdown(text: string): string {
 		return marked.parse(text, { async: false }) as string;
 	}
+
+	function parseCsv(text: string): string[][] {
+		const delimiter = text.includes('\t') ? '\t' : ',';
+		const rows: string[][] = [];
+		let current = '';
+		let inQuotes = false;
+		let cells: string[] = [];
+
+		for (let i = 0; i < text.length; i++) {
+			const char = text[i];
+			if (inQuotes) {
+				if (char === '"' && text[i + 1] === '"') {
+					current += '"';
+					i++;
+				} else if (char === '"') {
+					inQuotes = false;
+				} else {
+					current += char;
+				}
+			} else {
+				if (char === '"') {
+					inQuotes = true;
+				} else if (char === delimiter) {
+					cells.push(current);
+					current = '';
+				} else if (char === '\n' || (char === '\r' && text[i + 1] === '\n')) {
+					cells.push(current);
+					if (cells.some(c => c.trim())) rows.push(cells);
+					cells = [];
+					current = '';
+					if (char === '\r') i++;
+				} else {
+					current += char;
+				}
+			}
+		}
+		cells.push(current);
+		if (cells.some(c => c.trim())) rows.push(cells);
+
+		return rows;
+	}
+
+	function formatFileSize(bytes: number): string {
+		if (bytes < 1024) return bytes + ' B';
+		if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+		return (bytes / 1048576).toFixed(1) + ' MB';
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -169,10 +216,10 @@
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="text-ink paper-lines px-1 whitespace-pre-wrap cursor-text"
-				onclick={startEdit}
+				class="prose-chat text-sm text-ink px-1 cursor-text"
+				onclick={(e) => { if (!(e.target as HTMLElement).closest('a')) startEdit(); }}
 			>
-				{block.content}
+				{@html renderMarkdown(block.content || '')}
 			</div>
 		{/if}
 
@@ -230,6 +277,87 @@
 			{:else}
 				<div class="prose-chat text-sm text-ink leading-relaxed">
 					{@html renderMarkdown(block.content || '')}
+				</div>
+			{/if}
+		</div>
+
+	<!-- Document block -->
+	{:else if block.type === 'document'}
+		{@const meta = getMetadata()}
+		<a
+			href={block.image_url}
+			target="_blank"
+			rel="noopener"
+			class="flex items-center gap-3 rounded-lg border border-dashed border-border p-3
+				   bg-warm/20 hover:bg-warm/40 transition-colors no-underline group/doc"
+		>
+			<div class="w-10 h-12 rounded bg-cream border border-border flex items-center justify-center shrink-0">
+				<svg width="20" height="24" viewBox="0 0 20 24" fill="none" class="text-muted">
+					<path d="M2 2C2 0.9 2.9 0 4 0H13L20 7V22C20 23.1 19.1 24 18 24H4C2.9 24 2 23.1 2 22V2Z" fill="currentColor" opacity="0.1" stroke="currentColor" stroke-width="1.2" />
+					<path d="M13 0L20 7H15C13.9 7 13 6.1 13 5V0Z" fill="currentColor" opacity="0.15" />
+					<line x1="5" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1" opacity="0.4" />
+					<line x1="5" y1="15" x2="13" y2="15" stroke="currentColor" stroke-width="1" opacity="0.4" />
+					<line x1="5" y1="18" x2="11" y2="18" stroke="currentColor" stroke-width="1" opacity="0.4" />
+				</svg>
+			</div>
+			<div class="flex-1 min-w-0">
+				<p class="text-sm font-medium text-ink truncate">{block.content || 'Document'}</p>
+				<p class="text-[11px] text-muted">
+					{meta.fileType || 'DOC'}{meta.fileSize ? ' · ' + formatFileSize(Number(meta.fileSize)) : ''} · Click to view
+				</p>
+			</div>
+			<svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="text-muted group-hover/doc:text-ink transition-colors shrink-0">
+				<path d="M6 3H3V13H13V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+				<path d="M9 2H14V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+				<path d="M14 2L7 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+			</svg>
+		</a>
+
+	<!-- Data table block -->
+	{:else if block.type === 'data'}
+		{@const meta = getMetadata()}
+		{@const rows = parseCsv(block.content || '')}
+		<div class="rounded-lg border border-dashed border-border overflow-hidden">
+			{#if meta.filename}
+				<div class="px-3 py-1.5 bg-warm/30 border-b border-border flex items-center gap-2">
+					<svg width="12" height="12" viewBox="0 0 16 16" fill="none" class="text-muted shrink-0">
+						<rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.3" />
+						<line x1="1" y1="5" x2="15" y2="5" stroke="currentColor" stroke-width="1" />
+						<line x1="6" y1="5" x2="6" y2="15" stroke="currentColor" stroke-width="1" />
+						<line x1="11" y1="5" x2="11" y2="15" stroke="currentColor" stroke-width="1" />
+						<line x1="1" y1="9" x2="15" y2="9" stroke="currentColor" stroke-width="1" />
+						<line x1="1" y1="13" x2="15" y2="13" stroke="currentColor" stroke-width="1" />
+					</svg>
+					<span class="text-xs font-medium text-muted truncate">{meta.filename}</span>
+				</div>
+			{/if}
+			<div class="overflow-x-auto max-h-[400px] overflow-y-auto">
+				<table class="w-full text-xs border-collapse">
+					{#if rows.length > 0}
+						<thead class="sticky top-0 z-10">
+							<tr class="bg-warm/60">
+								<th class="px-2 py-1.5 border-b border-r border-border text-muted font-normal text-center w-8 bg-warm/60">#</th>
+								{#each rows[0] as cell}
+									<th class="px-2.5 py-1.5 border-b border-r border-border text-left font-semibold text-ink whitespace-nowrap bg-warm/60">{cell}</th>
+								{/each}
+							</tr>
+						</thead>
+						<tbody>
+							{#each rows.slice(1) as row, i}
+								<tr class="hover:bg-warm/20 {i % 2 === 1 ? 'bg-warm/10' : ''}">
+									<td class="px-2 py-1 border-b border-r border-border text-muted text-center font-mono text-[10px] bg-warm/5">{i + 1}</td>
+									{#each row as cell}
+										<td class="px-2.5 py-1 border-b border-r border-border text-ink whitespace-nowrap">{cell}</td>
+									{/each}
+								</tr>
+							{/each}
+						</tbody>
+					{/if}
+				</table>
+			</div>
+			{#if rows.length > 1}
+				<div class="px-3 py-1 bg-warm/20 border-t border-border">
+					<span class="text-[10px] text-muted">{rows.length - 1} rows × {rows[0]?.length || 0} columns</span>
 				</div>
 			{/if}
 		</div>

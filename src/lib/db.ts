@@ -30,7 +30,7 @@ export interface Page {
 export interface Block {
 	id: string;
 	page_id: string;
-	type: 'text' | 'image' | 'molecule' | 'chat_response';
+	type: 'text' | 'image' | 'molecule' | 'chat_response' | 'document' | 'data';
 	content: string | null;
 	image_url: string | null;
 	metadata: string | null;

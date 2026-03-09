@@ -36,7 +36,17 @@
 	let moleculeLoading = $state(false);
 	let chatSending = $state(false);
 	let fileInput: HTMLInputElement;
+	let docInput: HTMLInputElement;
+	let dataInput: HTMLInputElement;
+	let scanInput: HTMLInputElement;
 	let pageKey = $state(0); // for flip animation
+
+	// Scan/digitize state
+	let scanning = $state(false);
+	let scanPreview = $state<string | null>(null);
+	let scanProgress = $state('');
+	let scanStepCount = $state(0);
+	let scanStepTotal = $state(0);
 
 	// Page switching
 	async function selectPage(pageId: string) {
@@ -419,6 +429,193 @@
 		);
 	}
 
+	// Document upload handler
+	async function handleDocUpload(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		try {
+			const formData = new FormData();
+			formData.append('file', file, file.name);
+			const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+			if (!uploadRes.ok) throw new Error('Upload failed');
+			const { url } = await uploadRes.json();
+			const ext = file.name.split('.').pop()?.toUpperCase() || 'DOC';
+			const res = await fetch('/api/blocks', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					page_id: currentPageId,
+					type: 'document',
+					content: file.name,
+					image_url: url,
+					metadata: { fileType: ext, fileSize: file.size }
+				})
+			});
+			if (res.ok) {
+				const block: Block = await res.json();
+				blocks = [...blocks, block];
+			}
+		} catch (err) {
+			console.error('Document upload error:', err);
+		}
+		input.value = '';
+	}
+
+	// Data upload handler (CSV etc)
+	async function handleDataUpload(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		try {
+			const text = await file.text();
+			const res = await fetch('/api/blocks', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					page_id: currentPageId,
+					type: 'data',
+					content: text,
+					metadata: { filename: file.name }
+				})
+			});
+			if (res.ok) {
+				const block: Block = await res.json();
+				blocks = [...blocks, block];
+			}
+		} catch (err) {
+			console.error('Data upload error:', err);
+		}
+		input.value = '';
+	}
+
+	// Scan Notes — digitize handwritten notes via GPT-4o vision
+	async function handleScanUpload(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		input.value = '';
+
+		scanning = true;
+		scanProgress = 'Reading image...';
+		scanStepCount = 0;
+		scanStepTotal = 0;
+
+		try {
+			// Read file as data URL for vision API
+			const dataUrl = await new Promise<string>((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = () => resolve(reader.result as string);
+				reader.onerror = reject;
+				reader.readAsDataURL(file);
+			});
+
+			scanPreview = dataUrl;
+			scanProgress = 'Analyzing notes with AI...';
+
+			// Call digitize API
+			const res = await fetch('/api/digitize', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ imageDataUrl: dataUrl })
+			});
+
+			if (!res.ok) {
+				const err = await res.json();
+				throw new Error(err.error || 'Digitization failed');
+			}
+
+			const { blocks: digitizedBlocks } = await res.json();
+
+			if (!digitizedBlocks || digitizedBlocks.length === 0) {
+				throw new Error('No content detected in image');
+			}
+
+			scanStepTotal = digitizedBlocks.length;
+			scanProgress = `Creating ${digitizedBlocks.length} blocks...`;
+
+			// Load the original image for cropping
+			const img = new Image();
+			await new Promise<void>((resolve, reject) => {
+				img.onload = () => resolve();
+				img.onerror = reject;
+				img.src = dataUrl;
+			});
+
+			// Create blocks in order
+			for (const db of digitizedBlocks) {
+				scanStepCount++;
+				scanProgress = `Adding block ${scanStepCount} of ${scanStepTotal}...`;
+
+				if (db.type === 'image' && db.crop) {
+					// Crop the region from the original image
+					const cropCanvas = document.createElement('canvas');
+					const cx = (db.crop.x / 100) * img.width;
+					const cy = (db.crop.y / 100) * img.height;
+					const cw = (db.crop.w / 100) * img.width;
+					const ch = (db.crop.h / 100) * img.height;
+					cropCanvas.width = cw;
+					cropCanvas.height = ch;
+					const cropCtx = cropCanvas.getContext('2d')!;
+					cropCtx.drawImage(img, cx, cy, cw, ch, 0, 0, cw, ch);
+
+					// Convert to blob and upload
+					const blob = await new Promise<Blob>((resolve) => {
+						cropCanvas.toBlob((b) => resolve(b!), 'image/png');
+					});
+					const formData = new FormData();
+					formData.append('file', blob, `scan-crop-${Date.now()}-${scanStepCount}.png`);
+					const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData });
+					if (!uploadRes.ok) continue;
+					const { url } = await uploadRes.json();
+
+					const blockRes = await fetch('/api/blocks', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							page_id: currentPageId,
+							type: 'image',
+							image_url: url,
+							metadata: { source: 'scan', description: db.description }
+						})
+					});
+					if (blockRes.ok) {
+						const block: Block = await blockRes.json();
+						blocks = [...blocks, block];
+					}
+				} else {
+					// Text or equation block
+					const content = db.content || '';
+					if (!content.trim()) continue;
+					const blockRes = await fetch('/api/blocks', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							page_id: currentPageId,
+							type: 'text',
+							content
+						})
+					});
+					if (blockRes.ok) {
+						const block: Block = await blockRes.json();
+						blocks = [...blocks, block];
+					}
+				}
+			}
+
+			scanProgress = `Done! Added ${scanStepTotal} blocks.`;
+			await new Promise(r => setTimeout(r, 1000));
+		} catch (err) {
+			console.error('Scan error:', err);
+			scanProgress = `Error: ${err instanceof Error ? err.message : 'Scan failed'}`;
+			await new Promise(r => setTimeout(r, 2000));
+		}
+
+		scanning = false;
+		scanPreview = null;
+		scanProgress = '';
+	}
+
 	// Paste handling (images → image block, text → text block)
 	async function handlePaste(e: ClipboardEvent) {
 		// Don't intercept paste when focused on a text input
@@ -479,7 +676,7 @@
 
 <svelte:window onpaste={handlePaste} />
 
-<!-- Hidden file input for camera/gallery -->
+<!-- Hidden file inputs -->
 <input
 	bind:this={fileInput}
 	type="file"
@@ -487,6 +684,28 @@
 	capture="environment"
 	class="hidden"
 	onchange={handleFileUpload}
+/>
+<input
+	bind:this={docInput}
+	type="file"
+	accept=".pdf,.doc,.docx,.txt,.md"
+	class="hidden"
+	onchange={handleDocUpload}
+/>
+<input
+	bind:this={dataInput}
+	type="file"
+	accept=".csv,.tsv,.json,.xlsx,.xls"
+	class="hidden"
+	onchange={handleDataUpload}
+/>
+<input
+	bind:this={scanInput}
+	type="file"
+	accept="image/*"
+	capture="environment"
+	class="hidden"
+	onchange={handleScanUpload}
 />
 
 <div class="flex flex-col h-[100dvh] bg-cream">
@@ -576,7 +795,10 @@
 	<!-- Action bar -->
 	<ActionBar
 		onaddtext={addTextBlock}
-		onaddimage={addImageBlock}
+		onuploadimage={addImageBlock}
+		onuploaddocument={() => docInput?.click()}
+		onuploaddata={() => dataInput?.click()}
+		onscannotes={() => scanInput?.click()}
 		onaddmolecule={() => (moleculeInputOpen = true)}
 		ondraw={() => (drawingMode = true)}
 		ontoggleChat={() => (chatOpen = !chatOpen)}
@@ -618,3 +840,26 @@
 	onclose={() => (editModalOpen = false)}
 	onsave={saveNotebookEdit}
 />
+
+<!-- Scanning overlay -->
+{#if scanning}
+	<div class="fixed inset-0 z-50 bg-ink/60 backdrop-blur-sm flex items-center justify-center" transition:fly={{ y: 20, duration: 200 }}>
+		<div class="bg-card rounded-2xl shadow-xl max-w-sm w-full mx-6 p-6 text-center">
+			{#if scanPreview}
+				<div class="mb-4 rounded-lg overflow-hidden border border-border">
+					<img src={scanPreview} alt="Scanning..." class="w-full max-h-48 object-contain bg-warm/30" />
+				</div>
+			{/if}
+			<div class="flex items-center justify-center gap-3 mb-3">
+				<div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+				<p class="text-sm font-medium text-ink">Scanning Notes</p>
+			</div>
+			<p class="text-xs text-muted">{scanProgress}</p>
+			{#if scanStepTotal > 0}
+				<div class="mt-3 bg-warm rounded-full h-1.5 overflow-hidden">
+					<div class="h-full bg-accent rounded-full transition-all duration-300" style="width: {(scanStepCount / scanStepTotal) * 100}%"></div>
+				</div>
+			{/if}
+		</div>
+	</div>
+{/if}

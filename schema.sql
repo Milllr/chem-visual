@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS page (
 CREATE TABLE IF NOT EXISTS block (
   id          TEXT PRIMARY KEY,
   page_id     TEXT NOT NULL REFERENCES page(id) ON DELETE CASCADE,
-  type        TEXT NOT NULL CHECK(type IN ('text', 'image', 'molecule', 'chat_response')),
+  type        TEXT NOT NULL CHECK(type IN ('text', 'image', 'molecule', 'chat_response', 'document', 'data')),
   content     TEXT,
   image_url   TEXT,
   metadata    TEXT,
