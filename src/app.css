@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	:root {
+		--bg-cream: #f5f5ec;
+		--bg-card: #edeadf;
+		--bg-warm: #e8e4d9;
+		--text-ink: #1a1a1a;
+		--text-muted: #7a756b;
+		--accent: #4a4540;
+		--accent-dark: #2c2925;
+		--border: #d5d0c6;
+		--red-ink: #b54848;
+		--blue-ink: #4a6d8c;
+	}
+
+	* {
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	html {
+		font-family: 'Lora', Georgia, 'Times New Roman', serif;
+		background-color: var(--bg-cream);
+		color: var(--text-ink);
+		font-size: 15px;
+		-webkit-font-smoothing: antialiased;
+	}
+
+	body {
+		min-height: 100dvh;
+		overscroll-behavior: none;
+		line-height: 1.6;
+	}
+
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		font-family: 'Lora', Georgia, serif;
+		letter-spacing: -0.01em;
+	}
+
+	.font-ui {
+		font-family: 'Lora', Georgia, serif;
+		font-weight: 450;
+	}
+
+	.font-sketch {
+		font-family: 'Virgil', cursive;
+	}
+
+	/* Notebook paper lines — subtle */
+	.paper-lines {
+		background-image: repeating-linear-gradient(
+			transparent,
+			transparent 31px,
+			var(--border) 31px,
+			var(--border) 31.5px
+		);
+		background-position-y: 8px;
+	}
+
+	/* Pencil texture for molecule drawings */
+	.pencil-effect {
+		filter: contrast(1.1) saturate(0.2) sepia(0.08);
+		opacity: 0.9;
+	}
+
+	/* Scrollbar */
+	::-webkit-scrollbar {
+		width: 3px;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	::-webkit-scrollbar-thumb {
+		background: var(--border);
+		border-radius: 2px;
+	}
+
+	/* Page transition */
+	.page-enter {
+		animation: fadeIn 0.2s ease-out;
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	/* Safe area for notched phones */
+	.safe-bottom {
+		padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+	}
+	.safe-top {
+		padding-top: max(0.5rem, env(safe-area-inset-top));
+	}
+
+	/* Dashed containers — tinytpu style */
+	.dashed-box {
+		border: 1.5px dashed var(--border);
+		border-radius: 8px;
+	}
+}

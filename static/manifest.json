@@ -1,0 +1,11 @@
+{
+	"name": "Chem Journal",
+	"short_name": "ChemJournal",
+	"description": "Personal chemistry lab notebook & assistant",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#F5F5EC",
+	"theme_color": "#F5F5EC",
+	"orientation": "portrait",
+	"icons": []
+}
