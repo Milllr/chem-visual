@@ -1,29 +1,47 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <rect width="512" height="512" rx="96" fill="#F5F5EC"/>
-  <g transform="translate(56, 110) scale(3.3)" stroke="#5C6B5C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <!-- Benzene ring -->
-    <path d="M28,14 L40,21 L40,35 L28,42 L16,35 L16,21 Z" />
 
-    <!-- Double bonds (Kekulé) -->
-    <line x1="27" y1="17.5" x2="37" y2="23" />
-    <line x1="37" y1="33.5" x2="27" y2="39.5" />
-    <line x1="18.5" y1="33" x2="18.5" y2="23" />
+  <!-- Bond skeleton -->
+  <g stroke="#5C6B5C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Benzene ring (pointy-sides orientation) -->
+    <polygon points="193,243 168,200 118,200 93,243 118,286 168,286"/>
 
-    <!-- Chain: ring to C2 -->
-    <line x1="40" y1="35" x2="53" y2="26" />
-    <!-- C2 to C3 -->
-    <line x1="53" y1="26" x2="66" y2="35" />
+    <!-- Kekulé inner double bonds -->
+    <line x1="158" y1="208" x2="128" y2="208"/>
+    <line x1="103" y1="247" x2="120" y2="277"/>
+    <line x1="166" y1="277" x2="183" y2="247"/>
 
-    <!-- Methyl branch down from C3 -->
-    <line x1="66" y1="35" x2="66" y2="48" />
+    <!-- Ring → CH₂ -->
+    <line x1="193" y1="243" x2="236" y2="218"/>
 
-    <!-- C3 to N -->
-    <line x1="66" y1="35" x2="79" y2="26" />
+    <!-- CH₂ → C* (stereocenter) -->
+    <line x1="236" y1="218" x2="279" y2="243"/>
 
-    <!-- N to terminal CH3 -->
-    <line x1="92" y1="26" x2="105" y2="35" />
+    <!-- C* → CH₃ branch (down) -->
+    <line x1="279" y1="243" x2="279" y2="295"/>
 
-    <!-- NH label -->
-    <text x="80" y="30" font-size="10" fill="#5C6B5C" stroke="none" font-family="Georgia, 'Times New Roman', serif" font-style="italic">NH</text>
+    <!-- C* → N -->
+    <line x1="279" y1="243" x2="308" y2="226"/>
+
+    <!-- N → terminal CH₃ -->
+    <line x1="338" y1="226" x2="370" y2="244"/>
+
+    <!-- N — H (up) -->
+    <line x1="322" y1="200" x2="322" y2="184"/>
+  </g>
+
+  <!-- Atom and group labels -->
+  <g font-family="Arial, Helvetica, sans-serif" fill="#5C6B5C" font-weight="bold">
+    <!-- Nitrogen -->
+    <text x="322" y="228" font-size="35" text-anchor="middle">N</text>
+
+    <!-- Hydrogen on N -->
+    <text x="322" y="180" font-size="30" text-anchor="middle">H</text>
+
+    <!-- CH₃ below stereocenter -->
+    <text x="279" y="330" font-size="30" text-anchor="middle">CH<tspan font-size="21" dy="4">3</tspan></text>
+
+    <!-- Terminal CH₃ -->
+    <text x="376" y="260" font-size="30">CH<tspan font-size="21" dy="4">3</tspan></text>
   </g>
 </svg>
