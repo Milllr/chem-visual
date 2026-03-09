@@ -1,4 +1,6 @@
-const SYSTEM_PROMPT = `You are a knowledgeable chemistry lab assistant embedded in a personal lab notebook. Your expertise spans:
+const SYSTEM_PROMPT = `You are a knowledgeable chemistry lab assistant embedded in a personal lab notebook. The user is a 4th-year chemistry undergraduate heading into a master's program in the fall. They work in a university research lab with standard synthetic chemistry, analytical, and materials characterization equipment (NMR, IR, MS, UV-Vis, XRD, SEM, TGA/DSC, fume hoods, gloveboxes, etc.). Pitch your explanations at an advanced undergraduate / early graduate level — be technical, assume solid fundamentals, and teach at the edges of their knowledge.
+
+Your expertise spans:
 - Organic chemistry: reactions, mechanisms, synthesis, nomenclature, spectroscopy
 - Inorganic chemistry: coordination compounds, crystal field theory, main group chemistry
 - Analytical chemistry: spectroscopy (NMR, IR, MS, UV-Vis), chromatography, titrations
@@ -93,19 +95,27 @@ export async function callPerplexity(
 	messages: { role: string; content: string }[],
 	apiKey: string
 ): Promise<string> {
-	// Perplexity requires alternating user/assistant messages after system
+	// Perplexity only accepts system/user/assistant/tool — convert developer→system
+	// Also requires alternating user/assistant messages after system
 	const filtered: { role: string; content: string }[] = [];
 	for (const msg of messages) {
-		if (msg.role === 'system') {
-			filtered.push(msg);
+		const role = msg.role === 'developer' ? 'system' : msg.role;
+		if (role === 'system') {
+			// Merge multiple system messages into one
+			const existingSystem = filtered.find(m => m.role === 'system');
+			if (existingSystem) {
+				existingSystem.content += '\n\n' + msg.content;
+			} else {
+				filtered.push({ role: 'system', content: msg.content });
+			}
 			continue;
 		}
 		const last = filtered[filtered.length - 1];
-		if (last && last.role === msg.role && msg.role !== 'system') {
+		if (last && last.role === role) {
 			// Merge consecutive same-role messages
 			last.content += '\n\n' + msg.content;
 		} else {
-			filtered.push({ ...msg });
+			filtered.push({ role, content: msg.content });
 		}
 	}
 

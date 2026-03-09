@@ -2,6 +2,88 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { generateId } from '$lib/db';
 
+interface TrackedNotebook {
+	id: string;
+	title: string;
+	description: string;
+	goal: string;
+	updated: string;
+}
+
+async function generateStepForNotebook(
+	nb: TrackedNotebook,
+	db: D1Database,
+	apiKey: string
+): Promise<{ notebook_id: string; notebook_title: string; step: string }> {
+	// Get recent activity
+	const { results: recentBlocks } = await db
+		.prepare(
+			`SELECT b.content FROM block b 
+			 JOIN page p ON b.page_id = p.id 
+			 WHERE p.notebook_id = ? AND b.type = 'text' AND b.content IS NOT NULL AND b.content != ''
+			 ORDER BY b.created DESC LIMIT 3`
+		)
+		.bind(nb.id)
+		.all<{ content: string }>();
+
+	// Get previous suggestions to avoid repeats
+	const { results: prevSteps } = await db
+		.prepare('SELECT step FROM next_steps_history WHERE notebook_id = ? ORDER BY created DESC LIMIT 3')
+		.bind(nb.id)
+		.all<{ step: string }>();
+
+	const recentText = (recentBlocks || []).map(b => b.content?.slice(0, 100)).join('; ');
+	const prevStepText = (prevSteps || []).map(s => s.step).join('; ');
+
+	const prompt = `You are a helpful lab assistant for a 4th-year chemistry undergraduate. Based on this notebook, suggest 1 specific, actionable next step. Be concise. Don't repeat previous suggestions.
+
+Notebook: "${nb.title}"${nb.goal ? ` (Goal: ${nb.goal})` : ''}${nb.description ? ` — ${nb.description}` : ''}${recentText ? `\nRecent notes: ${recentText}` : ''}${prevStepText ? `\nPrevious suggestions (don't repeat): ${prevStepText}` : ''}
+
+Respond with ONLY a JSON object: {"step": "your short actionable next step"}`;
+
+	const res = await fetch('https://api.openai.com/v1/chat/completions', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${apiKey}`
+		},
+		body: JSON.stringify({
+			model: 'gpt-5-mini',
+			messages: [
+				{ role: 'developer', content: 'Respond only with the JSON object requested. No other text.' },
+				{ role: 'user', content: prompt }
+			],
+			max_completion_tokens: 4096
+		})
+	});
+
+	if (!res.ok) throw new Error(`OpenAI: ${res.status} ${await res.text()}`);
+	const data = await res.json();
+	const content = data.choices?.[0]?.message?.content;
+	if (!content) throw new Error('Empty response from model');
+
+	const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+	const parsed = JSON.parse(jsonStr);
+
+	const step = {
+		notebook_id: nb.id,
+		notebook_title: nb.title,
+		step: parsed.step || parsed.next_step || String(parsed)
+	};
+
+	// Cache and save to history
+	await db
+		.prepare("INSERT OR REPLACE INTO next_steps (notebook_id, steps, generated) VALUES (?, ?, datetime('now'))")
+		.bind(nb.id, JSON.stringify([step]))
+		.run();
+	await db
+		.prepare('INSERT INTO next_steps_history (id, notebook_id, step) VALUES (?, ?, ?)')
+		.bind(generateId(), nb.id, step.step)
+		.run();
+
+	return step;
+}
+
 export const POST: RequestHandler = async ({ request, platform }) => {
 	const db = platform?.env?.DB;
 	if (!db) return json({ error: 'DB unavailable' }, { status: 500 });
@@ -9,129 +91,48 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	const apiKey = platform?.env?.OPENAI_API_KEY;
 	if (!apiKey) return json({ error: 'API key not configured' }, { status: 500 });
 
-	// Get all tracked notebooks with goals and their last update time
 	const { results: notebooks } = await db
 		.prepare("SELECT id, title, description, goal, updated FROM notebook WHERE tracked = 1 ORDER BY updated DESC LIMIT 5")
-		.all<{ id: string; title: string; description: string; goal: string; updated: string }>();
+		.all<TrackedNotebook>();
 
 	if (!notebooks || notebooks.length === 0) {
 		return json({ steps: [] });
 	}
 
-	// Check if we have cached steps and if they're still fresh
 	const allSteps: { notebook_id: string; notebook_title: string; step: string }[] = [];
-	let needsRegeneration = false;
-
-	for (const nb of notebooks) {
-		const cached = await db
-			.prepare('SELECT steps, generated FROM next_steps WHERE notebook_id = ?')
-			.bind(nb.id)
-			.first<{ steps: string; generated: string }>();
-
-		if (cached) {
-			// Compare: regenerate if notebook updated after steps were generated
-			const nbUpdated = new Date(nb.updated + 'Z').getTime();
-			const stepsGenerated = new Date(cached.generated + 'Z').getTime();
-			
-			if (nbUpdated > stepsGenerated) {
-				needsRegeneration = true;
-				break;
-			} else {
-				// Use cached
-				try {
-					const parsed = JSON.parse(cached.steps);
-					allSteps.push(...parsed);
-				} catch {
-					needsRegeneration = true;
-					break;
-				}
-			}
-		} else {
-			needsRegeneration = true;
-			break;
-		}
-	}
-
-	if (!needsRegeneration && allSteps.length > 0) {
-		return json({ steps: allSteps });
-	}
-
-	// Need to regenerate — get recent activity for each notebook
-	const notebookSummaries: string[] = [];
-	for (const nb of notebooks) {
-		const { results: recentBlocks } = await db
-			.prepare(
-				`SELECT b.content FROM block b 
-				 JOIN page p ON b.page_id = p.id 
-				 WHERE p.notebook_id = ? AND b.type = 'text' AND b.content IS NOT NULL AND b.content != ''
-				 ORDER BY b.created DESC LIMIT 3`
-			)
-			.bind(nb.id)
-			.all<{ content: string }>();
-
-		// Get previous next steps for context
-		const { results: prevSteps } = await db
-			.prepare('SELECT step, created FROM next_steps_history WHERE notebook_id = ? ORDER BY created DESC LIMIT 3')
-			.bind(nb.id)
-			.all<{ step: string; created: string }>();
-
-		const recentText = (recentBlocks || []).map(b => b.content?.slice(0, 100)).join('; ');
-		const prevStepText = (prevSteps || []).map(s => s.step).join('; ');
-		
-		notebookSummaries.push(
-			`Notebook "${nb.title}" (id: ${nb.id})${nb.goal ? ` (Goal: ${nb.goal})` : ''}${nb.description ? ` — ${nb.description}` : ''}${recentText ? ` | Recent notes: ${recentText}` : ''}${prevStepText ? ` | Previous suggestions: ${prevStepText}` : ''}`
-		);
-	}
-
-	const prompt = `You are a helpful lab assistant. Based on these active chemistry/materials science notebooks, suggest 1 specific next step per notebook. Be concise and actionable. Don't repeat previous suggestions — give new, progressive advice.
-
-Notebooks:
-${notebookSummaries.join('\n')}
-
-Respond as a JSON array of objects: [{"notebook_id": "actual_id_from_above", "notebook_title": "...", "step": "short actionable next step"}]
-Only return the JSON array, no other text.`;
 
 	try {
-		const res = await fetch('https://api.openai.com/v1/chat/completions', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				Authorization: `Bearer ${apiKey}`
-			},
-			body: JSON.stringify({
-				model: 'gpt-5-mini',
-				messages: [{ role: 'developer', content: 'Respond only with the JSON array requested. No other text.' }, { role: 'user', content: prompt }],
-				max_completion_tokens: 8192
-			})
-		});
+		for (const nb of notebooks) {
+			const cached = await db
+				.prepare('SELECT steps, generated FROM next_steps WHERE notebook_id = ?')
+				.bind(nb.id)
+				.first<{ steps: string; generated: string }>();
 
-		if (!res.ok) throw new Error(`OpenAI: ${res.status} ${await res.text()}`);
-		const data = await res.json();
-		const content = data.choices?.[0]?.message?.content;
-		if (!content) throw new Error('Empty response from model');
+			if (cached) {
+				const nbUpdated = new Date(nb.updated + 'Z').getTime();
+				const stepsGenerated = new Date(cached.generated + 'Z').getTime();
 
-		// Parse JSON from response (handle markdown code blocks)
-		const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-		const steps = JSON.parse(jsonStr);
+				if (nbUpdated <= stepsGenerated) {
+					// Still fresh — use cached
+					try {
+						const parsed = JSON.parse(cached.steps);
+						allSteps.push(...parsed);
+						continue;
+					} catch {
+						// Bad cache, regenerate
+					}
+				}
+			}
 
-		// Store in cache and history
-		for (const step of steps) {
-			// Upsert cached step
-			await db
-				.prepare("INSERT OR REPLACE INTO next_steps (notebook_id, steps, generated) VALUES (?, ?, datetime('now'))")
-				.bind(step.notebook_id, JSON.stringify([step]))
-				.run();
-			
-			// Add to history
-			await db
-				.prepare("INSERT INTO next_steps_history (id, notebook_id, step) VALUES (?, ?, ?)")
-				.bind(generateId(), step.notebook_id, step.step)
-				.run();
+			// Stale or missing — regenerate only this notebook
+			const step = await generateStepForNotebook(nb, db, apiKey);
+			allSteps.push(step);
 		}
 
-		return json({ steps });
+		return json({ steps: allSteps });
 	} catch (err) {
 		console.error('Next steps error:', err);
-		return json({ steps: [], error: String(err) });
+		// Return whatever we have so far plus error
+		return json({ steps: allSteps, error: String(err) });
 	}
 };
