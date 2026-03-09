@@ -177,11 +177,12 @@
 
 	<!-- Image block -->
 	{:else if block.type === 'image'}
-		<div class="rounded-lg overflow-hidden border border-dashed border-border">
+		{@const isDrawing = getMetadata().source === 'drawing'}
+		<div class="rounded-lg overflow-hidden border border-dashed border-border {isDrawing ? 'bg-white' : ''}">
 			<img
 				src={block.image_url}
-				alt="Lab photo"
-				class="w-full h-auto max-h-[300px] object-cover"
+				alt={isDrawing ? 'Drawing' : 'Lab photo'}
+				class="w-full h-auto {isDrawing ? 'object-contain' : 'max-h-[300px] object-cover'}"
 				loading="lazy"
 			/>
 			{#if block.content}

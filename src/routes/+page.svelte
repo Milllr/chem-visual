@@ -14,6 +14,7 @@
 	let editingNotebook = $state<Notebook | null>(null);
 	let nextSteps = $state<{ notebook_id: string; notebook_title: string; step: string }[]>([]);
 	let loadingSteps = $state(false);
+	let stepsError = $state('');
 
 	function getGreeting(): string {
 		const hour = new Date().getHours();
@@ -36,9 +37,12 @@
 				if (res.ok) {
 					const result = await res.json();
 					nextSteps = result.steps || [];
+					if (result.error) stepsError = result.error;
+				} else {
+					stepsError = `API returned ${res.status}`;
 				}
-			} catch {
-				// silently fail
+			} catch (e) {
+				stepsError = String(e);
 			}
 			loadingSteps = false;
 		}
@@ -122,6 +126,10 @@
 	{#if loadingSteps}
 		<div class="mb-6 rounded-lg border border-dashed border-border p-4 bg-warm/20">
 			<p class="text-xs text-muted animate-pulse">Loading suggested next steps...</p>
+		</div>
+	{:else if stepsError}
+		<div class="mb-6 rounded-lg border border-dashed border-red-ink/30 p-3 bg-red-ink/5">
+			<p class="text-xs text-red-ink">Next steps error: {stepsError}</p>
 		</div>
 	{:else if nextSteps.length > 0}
 		<div class="mb-6">

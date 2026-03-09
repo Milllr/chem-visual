@@ -132,6 +132,6 @@ Only return the JSON array, no other text.`;
 		return json({ steps });
 	} catch (err) {
 		console.error('Next steps error:', err);
-		return json({ steps: [] });
+		return json({ steps: [], error: String(err) });
 	}
 };
