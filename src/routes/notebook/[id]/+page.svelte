@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import type { PageData } from './$types';
-	import type { Block, ChatMessage, Page } from '$lib/db';
+	import type { Block, ChatMessage, Page, Notebook } from '$lib/db';
 	import { generateId } from '$lib/db';
 	import { compressImage } from '$lib/image';
 	import ActionBar from '$lib/components/ActionBar.svelte';
 	import BlockRenderer from '$lib/components/BlockRenderer.svelte';
 	import ChatPanel from '$lib/components/ChatPanel.svelte';
+	import DrawingCanvas from '$lib/components/DrawingCanvas.svelte';
+	import EditNotebookModal from '$lib/components/EditNotebookModal.svelte';
 	import MoleculeInput from '$lib/components/MoleculeInput.svelte';
 	import PageTabs from '$lib/components/PageTabs.svelte';
 	import { fly } from 'svelte/transition';
@@ -14,13 +16,16 @@
 	let { data }: { data: PageData } = $props();
 
 	// State — initialized from server data, then managed client-side
+	let notebook = $state<Notebook>(data.notebook);
 	let pages = $state<Page[]>([]);
 	let blocks = $state<Block[]>([]);
 	let currentPageId = $state('');
 	let chatMessages = $state<ChatMessage[]>([]);
+	let editModalOpen = $state(false);
 
 	// Sync from server data on load
 	$effect(() => {
+		notebook = data.notebook;
 		pages = data.pages;
 		blocks = data.blocks;
 		currentPageId = data.currentPageId;
@@ -193,7 +198,7 @@
 	}
 
 	// Chat
-	async function sendChat(message: string, model: string, _attachmentNames?: string[]) {
+	async function sendChat(message: string, model: string, _attachmentNames?: string[], imageDataUrls?: string[]) {
 		chatSending = true;
 
 		// Optimistic user message
@@ -214,7 +219,8 @@
 				body: JSON.stringify({
 					notebook_id: data.notebook.id,
 					message,
-					model
+					model,
+					imageDataUrls: imageDataUrls || []
 				})
 			});
 
@@ -274,10 +280,49 @@
 			blocks = [...blocks, block];
 		}
 	}
+
+	// Edit notebook
+	async function saveNotebookEdit(updates: Partial<Notebook>) {
+		const res = await fetch(`/api/notebooks/${data.notebook.id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(updates)
+		});
+		if (res.ok) {
+			const updated = await res.json();
+			notebook = updated;
+			editModalOpen = false;
+		}
+	}
+
+	// Drawing
+	let drawingMode = $state(false);
+	let savedDrawings = $derived.by(() => {
+		const page = pages.find(p => p.id === currentPageId);
+		if (!page?.drawings) return [];
+		try { return JSON.parse(page.drawings) as any[]; } catch { return []; }
+	});
+
+	async function saveDrawing(strokes: any[]) {
+		drawingMode = false;
+		const drawingsJson = JSON.stringify(strokes);
+		
+		// Update server
+		await fetch(`/api/pages/${currentPageId}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ drawings: drawingsJson })
+		});
+		
+		// Update local state
+		pages = pages.map(p => 
+			p.id === currentPageId ? { ...p, drawings: drawingsJson } : p
+		);
+	}
 </script>
 
 <svelte:head>
-	<title>{data.notebook.title} — Chem Journal</title>
+	<title>{notebook.title} — Chem Journal</title>
 </svelte:head>
 
 <!-- Hidden file input for camera/gallery -->
@@ -313,10 +358,23 @@
 
 			<div class="flex-1 min-w-0">
 				<h1 class="font-heading text-base text-ink truncate">
-					<span class="mr-1">{data.notebook.emoji}</span>
-					{data.notebook.title}
+					<span class="mr-1">{notebook.emoji}</span>
+					{notebook.title}
 				</h1>
 			</div>
+
+			<!-- Edit notebook button -->
+			<button
+				class="w-8 h-8 flex items-center justify-center rounded-md
+					   hover:bg-warm active:bg-warm transition-colors text-muted"
+				onclick={() => (editModalOpen = true)}
+				aria-label="Edit notebook"
+			>
+				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M11 1.5l3.5 3.5L5 14.5H1.5V11z" />
+					<path d="M9.5 3L13 6.5" />
+				</svg>
+			</button>
 		</div>
 
 		<!-- Page tabs -->
@@ -330,9 +388,9 @@
 	</header>
 
 	<!-- Page content -->
-	<main class="flex-1 overflow-y-auto pb-24">
+	<main class="flex-1 overflow-y-auto pb-24 relative">
 		{#key pageKey}
-			<div class="page-enter max-w-2xl mx-auto px-4 py-4 space-y-3">
+			<div class="page-enter max-w-2xl mx-auto px-4 py-4 space-y-3 relative">
 				{#if blocks.length === 0}
 					<div class="text-center py-16">
 						<p class="font-sketch text-base text-muted/40">Empty page</p>
@@ -351,6 +409,26 @@
 						/>
 					</div>
 				{/each}
+
+				<!-- Drawing overlay (shows saved drawings) -->
+				{#if savedDrawings.length > 0 && !drawingMode}
+					<div class="absolute inset-0 pointer-events-none">
+						<svg class="w-full h-full" preserveAspectRatio="none">
+							{#each savedDrawings as stroke}
+								{#if stroke.points.length >= 2}
+									<path
+										d={stroke.points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0]} ${p[1]}`).join(' ')}
+										stroke={stroke.color === 'eraser' ? 'transparent' : stroke.color}
+										stroke-width={stroke.width}
+										fill="none"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								{/if}
+							{/each}
+						</svg>
+					</div>
+				{/if}
 			</div>
 		{/key}
 	</main>
@@ -360,10 +438,20 @@
 		onaddtext={addTextBlock}
 		onaddimage={addImageBlock}
 		onaddmolecule={() => (moleculeInputOpen = true)}
+		ondraw={() => (drawingMode = true)}
 		ontoggleChat={() => (chatOpen = !chatOpen)}
 		{chatOpen}
 	/>
 </div>
+
+<!-- Drawing canvas -->
+{#if drawingMode}
+	<DrawingCanvas
+		strokes={savedDrawings}
+		onsave={saveDrawing}
+		onclose={() => (drawingMode = false)}
+	/>
+{/if}
 
 <!-- Molecule input modal -->
 <MoleculeInput
@@ -381,4 +469,12 @@
 	onclose={() => (chatOpen = false)}
 	onsend={sendChat}
 	onpin={pinToPage}
+/>
+
+<!-- Edit notebook modal -->
+<EditNotebookModal
+	open={editModalOpen}
+	{notebook}
+	onclose={() => (editModalOpen = false)}
+	onsave={saveNotebookEdit}
 />

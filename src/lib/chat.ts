@@ -23,12 +23,16 @@ export function buildMessages(
 	notebookTitle: string,
 	pageSummaries: string[],
 	chatHistory: { role: string; content: string }[],
-	userMessage: string
+	userMessage: string,
+	notebookGoal?: string
 ) {
-	const context =
-		pageSummaries.length > 0
-			? `\n\nNotebook "${notebookTitle}" pages:\n${pageSummaries.join('\n')}`
-			: `\n\nNotebook: "${notebookTitle}"`;
+	let context = `\n\nNotebook: "${notebookTitle}"`;
+	if (notebookGoal) {
+		context += `\nProject Goal: ${notebookGoal}`;
+	}
+	if (pageSummaries.length > 0) {
+		context += `\nPages:\n${pageSummaries.join('\n')}`;
+	}
 
 	return [
 		{ role: 'system' as const, content: SYSTEM_PROMPT + context },
@@ -39,8 +43,28 @@ export function buildMessages(
 
 export async function callOpenAI(
 	messages: { role: string; content: string }[],
-	apiKey: string
+	apiKey: string,
+	imageDataUrls: string[] = []
 ): Promise<string> {
+	// If images are provided, convert the last user message to vision format
+	let apiMessages: any[] = messages;
+	if (imageDataUrls.length > 0) {
+		apiMessages = messages.map((msg, idx) => {
+			// Only add images to the last user message
+			if (idx === messages.length - 1 && msg.role === 'user') {
+				const content: any[] = [{ type: 'text', text: msg.content }];
+				for (const dataUrl of imageDataUrls) {
+					content.push({
+						type: 'image_url',
+						image_url: { url: dataUrl, detail: 'low' }
+					});
+				}
+				return { role: msg.role, content };
+			}
+			return msg;
+		});
+	}
+
 	const res = await fetch('https://api.openai.com/v1/chat/completions', {
 		method: 'POST',
 		headers: {
@@ -49,7 +73,7 @@ export async function callOpenAI(
 		},
 		body: JSON.stringify({
 			model: 'gpt-4o',
-			messages,
+			messages: apiMessages,
 			max_tokens: 1500,
 			temperature: 0.3
 		})

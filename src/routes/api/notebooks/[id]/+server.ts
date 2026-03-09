@@ -23,7 +23,7 @@ export const PUT: RequestHandler = async ({ params, request, platform }) => {
 	const values: unknown[] = [];
 
 	for (const [key, value] of Object.entries(updates)) {
-		if (['title', 'description', 'color', 'emoji', 'sort_order'].includes(key)) {
+		if (['title', 'description', 'color', 'emoji', 'sort_order', 'goal', 'tracked'].includes(key)) {
 			fields.push(`${key} = ?`);
 			values.push(value);
 		}

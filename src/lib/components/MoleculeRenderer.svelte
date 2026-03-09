@@ -14,7 +14,6 @@
 
 	$effect(() => {
 		if (!browser || !containerEl || !smiles) return;
-		// Wait for layout to be ready
 		requestAnimationFrame(() => {
 			if (containerEl) renderMolecule();
 		});
@@ -29,9 +28,6 @@
 			const mod: any = SD.default || SD;
 
 			const Parser = mod.Parser || SD.Parser;
-			// Use SvgDrawer directly — the Drawer class has a parameter mismatch bug
-			// that passes infoOnly where SvgDrawer expects weights, causing svgWrapper
-			// to never be created and determineDimensions to fail on null.
 			const SvgDrawerClass = mod.SvgDrawer || SD.SvgDrawer;
 
 			if (!Parser?.parse || !SvgDrawerClass) {
@@ -48,7 +44,7 @@
 				return;
 			}
 
-			// Step 2: Draw to SVG via SvgDrawer (bypasses buggy Drawer.draw())
+			// Step 2: Draw to SVG via SvgDrawer
 			try {
 				const svgDrawer = new SvgDrawerClass({
 					width,
@@ -59,13 +55,20 @@
 					bondSpacing: 2.6,
 					fontSizeLarge: 6,
 					fontSizeSmall: 4,
-					padding: 20
+					padding: 20,
+					compactDrawing: true
 				});
-				const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-				svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-				svgEl.setAttributeNS(null, 'width', String(width));
-				svgEl.setAttributeNS(null, 'height', String(height));
-				svgDrawer.draw(tree, svgEl, 'light');
+
+				// Pass null so SvgDrawer creates its own SVG with correct viewBox
+				const svgEl = svgDrawer.draw(tree, 'svg', 'light');
+
+				// Make SVG responsive: fill container, preserve aspect ratio
+				svgEl.removeAttribute('width');
+				svgEl.removeAttribute('height');
+				svgEl.style.width = '100%';
+				svgEl.style.height = '100%';
+				svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
 				containerEl.innerHTML = '';
 				containerEl.appendChild(svgEl);
 				loaded = true;
@@ -80,11 +83,11 @@
 	}
 </script>
 
-<div class="relative inline-block">
+<div class="relative">
 	<div
 		bind:this={containerEl}
-		class="rounded-lg max-w-full"
-		style="width: {width}px; height: {height}px; background: transparent;"
+		class="rounded-lg w-full flex items-center justify-center"
+		style="height: {height}px; background: transparent;"
 	></div>
 
 	{#if error}

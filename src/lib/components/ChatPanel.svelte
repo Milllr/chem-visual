@@ -9,7 +9,7 @@
 		messages: ChatMessage[];
 		sending?: boolean;
 		onclose: () => void;
-		onsend: (message: string, model: string, attachmentNames?: string[]) => void;
+		onsend: (message: string, model: string, attachmentNames?: string[], imageDataUrls?: string[]) => void;
 		onpin: (content: string) => void;
 		onaddcontext?: (text: string, filename: string) => void;
 	}
@@ -20,6 +20,32 @@
 	let contextFiles = $state<{ name: string; text: string; isImage?: boolean }[]>([]);
 	let contextFileInput: HTMLInputElement;
 	let messagesContainer: HTMLDivElement;
+
+	/** Compress image to max 512px and JPEG 0.6 quality for vision API */
+	async function compressImageForChat(file: File): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const img = new Image();
+			img.onload = () => {
+				const maxDim = 512;
+				let w = img.width;
+				let h = img.height;
+				if (w > maxDim || h > maxDim) {
+					const scale = maxDim / Math.max(w, h);
+					w = Math.round(w * scale);
+					h = Math.round(h * scale);
+				}
+				const canvas = document.createElement('canvas');
+				canvas.width = w;
+				canvas.height = h;
+				const ctx = canvas.getContext('2d')!;
+				ctx.drawImage(img, 0, 0, w, h);
+				resolve(canvas.toDataURL('image/jpeg', 0.6));
+				URL.revokeObjectURL(img.src);
+			};
+			img.onerror = reject;
+			img.src = URL.createObjectURL(file);
+		});
+	}
 
 	$effect(() => {
 		if (messages.length && messagesContainer) {
@@ -37,6 +63,7 @@
 		// but only show a clean version in the chat UI
 		let fullMessage = msg;
 		let attachmentNames: string[] = [];
+		let imageDataUrls: string[] = [];
 
 		if (contextFiles.length > 0) {
 			const textFiles = contextFiles.filter((f) => !f.isImage);
@@ -50,12 +77,12 @@
 				fullMessage = `${ctx}\n\n---\n\n${msg}`;
 			}
 
-			// Append image data URLs as special markers
+			// Collect image data URLs separately (NOT in the text)
 			if (imageFiles.length > 0) {
-				const imgCtx = imageFiles
-					.map((f) => `[Image: ${f.name}]\n${f.text}`)
-					.join('\n\n');
-				fullMessage = `${fullMessage}\n\n${imgCtx}`;
+				imageDataUrls = imageFiles.map((f) => f.text);
+				// Add image filenames to message for context (not the data)
+				const imgNames = imageFiles.map((f) => f.name).join(', ');
+				fullMessage = `${fullMessage}\n\n[Attached images: ${imgNames}]`;
 			}
 
 			attachmentNames = contextFiles.map((f) => f.name);
@@ -63,8 +90,8 @@
 		}
 
 		input = '';
-		// Send full message to API but store attachment names for display
-		(onsend as any)(fullMessage, model, attachmentNames);
+		// Send full message to API with images as separate data
+		(onsend as any)(fullMessage, model, attachmentNames, imageDataUrls);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -82,13 +109,8 @@
 		for (const file of files) {
 			try {
 				if (file.type.startsWith('image/')) {
-					// Read image as base64 data URL for GPT-4o vision
-					const dataUrl = await new Promise<string>((resolve, reject) => {
-						const reader = new FileReader();
-						reader.onload = () => resolve(reader.result as string);
-						reader.onerror = reject;
-						reader.readAsDataURL(file);
-					});
+					// Compress image: resize to max 512px, JPEG quality 0.6
+					const dataUrl = await compressImageForChat(file);
 					contextFiles = [...contextFiles, { name: file.name, text: dataUrl, isImage: true }];
 				} else {
 					let text: string;
@@ -117,14 +139,16 @@
 		let text = content;
 
 		// Extract [Attached: filename] blocks and their content
-		text = text.replace(/\[Attached: ([^\]]+)\]\n[\s\S]*?(?=\n\n---\n\n|\[Attached: |\[Image: |$)/g, (_, name) => {
+		text = text.replace(/\[Attached: ([^\]]+)\]\n[\s\S]*?(?=\n\n---\n\n|\[Attached: |\[Attached images: |$)/g, (_, name) => {
 			attachments.push({ name, isImage: false });
 			return '';
 		});
 
-		// Extract [Image: filename] blocks and their data URLs
-		text = text.replace(/\[Image: ([^\]]+)\]\n[^\n]*/g, (_, name) => {
-			attachments.push({ name, isImage: true });
+		// Extract [Attached images: name1, name2] references
+		text = text.replace(/\[Attached images: ([^\]]+)\]/g, (_, names) => {
+			for (const name of names.split(',').map((n: string) => n.trim())) {
+				attachments.push({ name, isImage: true });
+			}
 			return '';
 		});
 

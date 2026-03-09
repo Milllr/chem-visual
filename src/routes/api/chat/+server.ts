@@ -7,16 +7,16 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	const db = platform?.env?.DB;
 	if (!db) return json({ error: 'DB unavailable' }, { status: 500 });
 
-	const { notebook_id, message, model } = await request.json();
+	const { notebook_id, message, model, imageDataUrls } = await request.json();
 	if (!notebook_id || !message) {
 		return json({ error: 'notebook_id and message required' }, { status: 400 });
 	}
 
-	// Get notebook title
+	// Get notebook title and goal
 	const notebook = await db
-		.prepare('SELECT title FROM notebook WHERE id = ?')
+		.prepare('SELECT title, goal FROM notebook WHERE id = ?')
 		.bind(notebook_id)
-		.first<{ title: string }>();
+		.first<{ title: string; goal: string }>();
 	if (!notebook) return json({ error: 'Notebook not found' }, { status: 404 });
 
 	// Get page summaries for context
@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		.all<{ role: string; content: string }>();
 
 	// Build messages and call AI
-	const messages = buildMessages(notebook.title, pageSummaries, history || [], message);
+	const messages = buildMessages(notebook.title, pageSummaries, history || [], message, notebook.goal);
 
 	// Save user message
 	const userMsgId = generateId();
@@ -64,7 +64,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		} else {
 			const apiKey = platform?.env?.OPENAI_API_KEY;
 			if (!apiKey) throw new Error('OpenAI API key not configured');
-			responseContent = await callOpenAI(messages, apiKey);
+			const images: string[] = Array.isArray(imageDataUrls) ? imageDataUrls : [];
+			responseContent = await callOpenAI(messages, apiKey, images);
 		}
 	} catch (err) {
 		const errorMsg = err instanceof Error ? err.message : 'AI call failed';

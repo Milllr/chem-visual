@@ -54,9 +54,14 @@
 			{/if}
 
 			<!-- Updated -->
-			<p class="text-[11px] text-muted/50">
-				{timeAgo(notebook.updated)}
-			</p>
+			<div class="flex items-center gap-1.5">
+				<p class="text-[11px] text-muted/50">
+					{timeAgo(notebook.updated)}
+				</p>
+				{#if notebook.tracked === 0}
+					<span class="text-[9px] text-muted/40 bg-warm rounded px-1 py-0.5">untracked</span>
+				{/if}
+			</div>
 		</div>
 	</button>
 

@@ -10,6 +10,8 @@ export interface Notebook {
 	description: string;
 	color: string;
 	emoji: string;
+	goal: string;
+	tracked: number;
 	sort_order: number;
 	created: string;
 	updated: string;
@@ -19,6 +21,7 @@ export interface Page {
 	id: string;
 	notebook_id: string;
 	title: string;
+	drawings: string;
 	sort_order: number;
 	created: string;
 	updated: string;

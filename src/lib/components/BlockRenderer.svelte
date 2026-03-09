@@ -53,6 +53,11 @@
 
 	function handleBlur() {
 		clearTimeout(saveTimer);
+		// Trim trailing whitespace/newlines
+		const trimmed = editContent.replace(/\s+$/, '');
+		if (trimmed !== editContent) {
+			editContent = trimmed;
+		}
 		// Always save current content
 		if (editContent !== block.content) {
 			onupdate(editContent);
@@ -109,18 +114,18 @@
 			<textarea
 				bind:this={textareaEl}
 				bind:value={editContent}
-				class="w-full bg-transparent text-sm text-ink
-					   resize-none outline-none paper-lines min-h-[2rem] px-1 leading-relaxed"
+				class="w-full bg-transparent text-ink
+					   resize-none outline-none paper-lines px-1"
 				oninput={handleInput}
 				onblur={handleBlur}
 				placeholder="Write something..."
-				rows="1"
+				rows={editContent.trim() ? 1 : 5}
 			></textarea>
 		{:else}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
-				class="text-sm text-ink paper-lines px-1 min-h-[2rem] whitespace-pre-wrap leading-relaxed cursor-text"
+				class="text-ink paper-lines px-1 whitespace-pre-wrap cursor-text"
 				onclick={startEdit}
 			>
 				{block.content}

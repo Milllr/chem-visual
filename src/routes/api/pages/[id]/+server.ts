@@ -10,7 +10,7 @@ export const PUT: RequestHandler = async ({ params, request, platform }) => {
 	const values: unknown[] = [];
 
 	for (const [key, value] of Object.entries(updates)) {
-		if (['title', 'sort_order'].includes(key)) {
+		if (['title', 'sort_order', 'drawings'].includes(key)) {
 			fields.push(`${key} = ?`);
 			values.push(value);
 		}

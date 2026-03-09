@@ -53,15 +53,18 @@
 		font-family: 'Virgil', cursive;
 	}
 
-	/* Notebook paper lines — subtle */
+	/* Notebook paper lines — pixel-perfect alignment */
 	.paper-lines {
-		background-image: repeating-linear-gradient(
-			transparent,
-			transparent 31px,
-			var(--border) 31px,
-			var(--border) 31.5px
+		font-size: 14px !important;
+		line-height: 24px !important;
+		background-image: linear-gradient(
+			to bottom,
+			transparent 23px,
+			var(--border) 23px
 		);
-		background-position-y: 8px;
+		background-size: 100% 24px;
+		padding-top: 0 !important;
+		padding-bottom: 0 !important;
 	}
 
 	/* Pencil texture for molecule drawings */

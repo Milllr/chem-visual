@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS notebook (
   description TEXT DEFAULT '',
   color       TEXT DEFAULT '#C4A882',
   emoji       TEXT DEFAULT '🧪',
+  goal        TEXT DEFAULT '',
+  tracked     INTEGER DEFAULT 1,
   sort_order  INTEGER DEFAULT 0,
   created     TEXT DEFAULT (datetime('now')),
   updated     TEXT DEFAULT (datetime('now'))
@@ -13,6 +15,7 @@ CREATE TABLE IF NOT EXISTS page (
   id          TEXT PRIMARY KEY,
   notebook_id TEXT NOT NULL REFERENCES notebook(id) ON DELETE CASCADE,
   title       TEXT NOT NULL DEFAULT 'Untitled',
+  drawings    TEXT DEFAULT '[]',
   sort_order  INTEGER DEFAULT 0,
   created     TEXT DEFAULT (datetime('now')),
   updated     TEXT DEFAULT (datetime('now'))
