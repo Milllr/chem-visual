@@ -193,7 +193,7 @@
 	}
 
 	// Chat
-	async function sendChat(message: string, model: string) {
+	async function sendChat(message: string, model: string, _attachmentNames?: string[]) {
 		chatSending = true;
 
 		// Optimistic user message

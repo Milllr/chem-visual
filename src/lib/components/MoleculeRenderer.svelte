@@ -8,13 +8,16 @@
 	}
 
 	let { smiles, width = 280, height = 200 }: Props = $props();
-	let canvasEl: HTMLCanvasElement;
+	let containerEl: HTMLDivElement;
 	let error = $state('');
 	let loaded = $state(false);
 
 	$effect(() => {
-		if (!browser || !canvasEl || !smiles) return;
-		renderMolecule();
+		if (!browser || !containerEl || !smiles) return;
+		// Wait for layout to be ready
+		requestAnimationFrame(() => {
+			if (containerEl) renderMolecule();
+		});
 	});
 
 	async function renderMolecule() {
@@ -23,49 +26,66 @@
 			loaded = false;
 
 			const SD = await import('smiles-drawer');
-			const SmilesDrawer = SD.default || SD;
+			const mod: any = SD.default || SD;
 
-			// Clear canvas
-			const ctx = canvasEl.getContext('2d');
-			if (ctx) {
-				ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+			const Parser = mod.Parser || SD.Parser;
+			// Use SvgDrawer directly — the Drawer class has a parameter mismatch bug
+			// that passes infoOnly where SvgDrawer expects weights, causing svgWrapper
+			// to never be created and determineDimensions to fail on null.
+			const SvgDrawerClass = mod.SvgDrawer || SD.SvgDrawer;
+
+			if (!Parser?.parse || !SvgDrawerClass) {
+				error = 'Renderer not available';
+				return;
 			}
 
-			SmilesDrawer.parse(
-				smiles,
-				(tree: any) => {
-					const drawer = new SmilesDrawer.Drawer({
-						width: canvasEl.width,
-						height: canvasEl.height,
-						bondThickness: 1.0,
-						bondLength: 15,
-						shortBondLength: 0.85,
-						bondSpacing: 2.6,
-						fontSizeLarge: 6,
-						fontSizeSmall: 4,
-						padding: 20
-					});
-					drawer.draw(tree, canvasEl, 'light');
-					loaded = true;
-				},
-				() => {
-					error = 'Invalid structure';
-				}
-			);
-		} catch {
+			// Step 1: Parse SMILES
+			let tree: any;
+			try {
+				tree = Parser.parse(smiles);
+			} catch {
+				error = 'Invalid structure';
+				return;
+			}
+
+			// Step 2: Draw to SVG via SvgDrawer (bypasses buggy Drawer.draw())
+			try {
+				const svgDrawer = new SvgDrawerClass({
+					width,
+					height,
+					bondThickness: 1.0,
+					bondLength: 15,
+					shortBondLength: 0.85,
+					bondSpacing: 2.6,
+					fontSizeLarge: 6,
+					fontSizeSmall: 4,
+					padding: 20
+				});
+				const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+				svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+				svgEl.setAttributeNS(null, 'width', String(width));
+				svgEl.setAttributeNS(null, 'height', String(height));
+				svgDrawer.draw(tree, svgEl, 'light');
+				containerEl.innerHTML = '';
+				containerEl.appendChild(svgEl);
+				loaded = true;
+			} catch (e) {
+				console.error('Molecule draw error:', e);
+				error = 'Render failed';
+			}
+		} catch (e) {
+			console.error('Molecule import error:', e);
 			error = 'Failed to render';
 		}
 	}
 </script>
 
 <div class="relative inline-block">
-	<canvas
-		bind:this={canvasEl}
-		{width}
-		{height}
-		class="pencil-effect rounded-lg max-w-full h-auto"
-		style="background: transparent;"
-	></canvas>
+	<div
+		bind:this={containerEl}
+		class="rounded-lg max-w-full"
+		style="width: {width}px; height: {height}px; background: transparent;"
+	></div>
 
 	{#if error}
 		<div class="absolute inset-0 flex items-center justify-center">

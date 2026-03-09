@@ -29,6 +29,13 @@
 		}
 	}
 
+	async function deleteNotebook(id: string) {
+		const res = await fetch(`/api/notebooks/${id}`, { method: 'DELETE' });
+		if (res.ok) {
+			notebooks = notebooks.filter((n) => n.id !== id);
+		}
+	}
+
 	function openNotebook(id: string) {
 		goto(`/notebook/${id}`);
 	}
@@ -63,7 +70,7 @@
 	{#if notebooks.length > 0}
 		<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
 			{#each notebooks as notebook (notebook.id)}
-				<NotebookCard {notebook} onclick={() => openNotebook(notebook.id)} />
+				<NotebookCard {notebook} onclick={() => openNotebook(notebook.id)} ondelete={() => deleteNotebook(notebook.id)} />
 			{/each}
 		</div>
 	{:else}

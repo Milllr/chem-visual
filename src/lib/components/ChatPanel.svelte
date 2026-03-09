@@ -1,18 +1,24 @@
 <script lang="ts">
 	import type { ChatMessage } from '$lib/db';
+	import { marked } from 'marked';
+
+	marked.setOptions({ breaks: true, gfm: true });
 
 	interface Props {
 		open: boolean;
 		messages: ChatMessage[];
 		sending?: boolean;
 		onclose: () => void;
-		onsend: (message: string, model: string) => void;
+		onsend: (message: string, model: string, attachmentNames?: string[]) => void;
 		onpin: (content: string) => void;
+		onaddcontext?: (text: string, filename: string) => void;
 	}
 
-	let { open, messages, sending = false, onclose, onsend, onpin }: Props = $props();
+	let { open, messages, sending = false, onclose, onsend, onpin, onaddcontext }: Props = $props();
 	let input = $state('');
 	let model = $state<'openai' | 'perplexity'>('openai');
+	let contextFiles = $state<{ name: string; text: string; isImage?: boolean }[]>([]);
+	let contextFileInput: HTMLInputElement;
 	let messagesContainer: HTMLDivElement;
 
 	$effect(() => {
@@ -26,8 +32,39 @@
 	function handleSend() {
 		const msg = input.trim();
 		if (!msg || sending) return;
+
+		// Build the full message with file context for the API,
+		// but only show a clean version in the chat UI
+		let fullMessage = msg;
+		let attachmentNames: string[] = [];
+
+		if (contextFiles.length > 0) {
+			const textFiles = contextFiles.filter((f) => !f.isImage);
+			const imageFiles = contextFiles.filter((f) => f.isImage);
+
+			// Prepend text file contents (hidden from display)
+			if (textFiles.length > 0) {
+				const ctx = textFiles
+					.map((f) => `[Attached: ${f.name}]\n${f.text}`)
+					.join('\n\n');
+				fullMessage = `${ctx}\n\n---\n\n${msg}`;
+			}
+
+			// Append image data URLs as special markers
+			if (imageFiles.length > 0) {
+				const imgCtx = imageFiles
+					.map((f) => `[Image: ${f.name}]\n${f.text}`)
+					.join('\n\n');
+				fullMessage = `${fullMessage}\n\n${imgCtx}`;
+			}
+
+			attachmentNames = contextFiles.map((f) => f.name);
+			contextFiles = [];
+		}
+
 		input = '';
-		onsend(msg, model);
+		// Send full message to API but store attachment names for display
+		(onsend as any)(fullMessage, model, attachmentNames);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -36,23 +73,95 @@
 			handleSend();
 		}
 	}
+
+	async function handleContextFile(e: Event) {
+		const el = e.currentTarget as HTMLInputElement;
+		const files = el.files;
+		if (!files) return;
+
+		for (const file of files) {
+			try {
+				if (file.type.startsWith('image/')) {
+					// Read image as base64 data URL for GPT-4o vision
+					const dataUrl = await new Promise<string>((resolve, reject) => {
+						const reader = new FileReader();
+						reader.onload = () => resolve(reader.result as string);
+						reader.onerror = reject;
+						reader.readAsDataURL(file);
+					});
+					contextFiles = [...contextFiles, { name: file.name, text: dataUrl, isImage: true }];
+				} else {
+					let text: string;
+					if (file.name.endsWith('.pdf') || file.type === 'application/pdf') {
+						const { extractPdfText } = await import('$lib/pdf');
+						text = await extractPdfText(file);
+					} else {
+						text = await file.text();
+					}
+					contextFiles = [...contextFiles, { name: file.name, text: text.slice(0, 15000) }];
+				}
+			} catch {
+				// Skip files that can't be read
+			}
+		}
+		el.value = '';
+	}
+
+	function removeContextFile(index: number) {
+		contextFiles = contextFiles.filter((_, i) => i !== index);
+	}
+
+	/** Extract clean display text and attachment info from a user message */
+	function getDisplayContent(content: string): { text: string; attachments: { name: string; isImage: boolean }[] } {
+		const attachments: { name: string; isImage: boolean }[] = [];
+		let text = content;
+
+		// Extract [Attached: filename] blocks and their content
+		text = text.replace(/\[Attached: ([^\]]+)\]\n[\s\S]*?(?=\n\n---\n\n|\[Attached: |\[Image: |$)/g, (_, name) => {
+			attachments.push({ name, isImage: false });
+			return '';
+		});
+
+		// Extract [Image: filename] blocks and their data URLs
+		text = text.replace(/\[Image: ([^\]]+)\]\n[^\n]*/g, (_, name) => {
+			attachments.push({ name, isImage: true });
+			return '';
+		});
+
+		// Clean up separator
+		text = text.replace(/^[\s]*---[\s]*/g, '').trim();
+
+		return { text, attachments };
+	}
+
+	function getQuestionForAnswer(msg: ChatMessage): string | null {
+		// Find the user message that preceded this assistant message
+		const idx = messages.indexOf(msg);
+		for (let i = idx - 1; i >= 0; i--) {
+			if (messages[i].role === 'user') {
+				return messages[i].content;
+			}
+		}
+		return null;
+	}
+
+	function renderMarkdown(text: string): string {
+		return marked.parse(text, { async: false }) as string;
+	}
 </script>
 
 {#if open}
 	<!-- Backdrop -->
 	<button
-		class="fixed inset-0 z-50 bg-ink/20 backdrop-blur-[2px] lg:hidden"
+		class="fixed inset-0 z-40 bg-ink/20 backdrop-blur-[2px]"
 		onclick={onclose}
 		aria-label="Close chat"
 	></button>
 
 	<!-- Panel -->
 	<div
-		class="fixed bottom-0 left-0 right-0 z-50 bg-cream border-t border-border
-			   rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col
-			   lg:static lg:rounded-none lg:shadow-none lg:border-l lg:border-t-0
-			   lg:w-[360px] lg:max-h-full lg:h-full"
-		style="animation: slideUp 0.25s ease-out"
+		class="fixed inset-0 z-50 bg-cream flex flex-col"
+		style="animation: slideUp 0.2s ease-out"
 	>
 		<!-- Header -->
 		<div class="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
@@ -104,17 +213,47 @@
 								? 'bg-accent text-white rounded-br-md'
 								: 'bg-warm rounded-bl-md'}"
 						>
-							<p class="font-body text-base whitespace-pre-wrap leading-relaxed">
-								{msg.content}
-							</p>
+							{#if msg.role === 'user'}
+								{@const displayContent = getDisplayContent(msg.content)}
+								{#if displayContent.attachments.length > 0}
+									<div class="flex flex-wrap gap-1 mb-1.5">
+										{#each displayContent.attachments as att}
+											<span class="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px]">
+												{#if att.isImage}
+													<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="10" height="10" rx="1" /><circle cx="4" cy="4" r="1" /><path d="M1 8l3-3 2 2 2-2 3 3" /></svg>
+												{:else}
+													<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1H3a1 1 0 00-1 1v8a1 1 0 001 1h6a1 1 0 001-1V4L7 1z" /><path d="M7 1v3h3" /></svg>
+												{/if}
+												{att.name}
+											</span>
+										{/each}
+									</div>
+								{/if}
+								<p class="font-body text-sm whitespace-pre-wrap leading-relaxed">
+									{displayContent.text}
+								</p>
+							{:else}
+								<div class="prose-chat font-body text-sm leading-relaxed">
+									{@html renderMarkdown(msg.content)}
+								</div>
+							{/if}
 							{#if msg.role === 'assistant'}
-								<button
-									class="font-ui text-xs text-muted hover:text-accent-dark mt-1.5 flex items-center gap-1"
-									onclick={() => onpin(msg.content)}
-								>
-									<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M7 1L11 5M3 5L7 1L11 5L7 9M3 5L1 11L7 9" /></svg>
-									Pin to page
-								</button>
+								<div class="flex items-center gap-2 mt-2 pt-1.5 border-t border-border/30">
+									<button
+										class="font-ui text-[11px] text-muted hover:text-accent-dark flex items-center gap-1"
+										onclick={() => {
+											const question = getQuestionForAnswer(msg);
+											const journalContent = question
+												? `Q: ${question}\n\n${msg.content}`
+												: msg.content;
+											onpin(journalContent);
+											onclose();
+										}}
+									>
+										<svg class="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="3" x2="7" y2="11" /><line x1="3" y1="7" x2="11" y2="7" /></svg>
+										Add to journal
+									</button>
+								</div>
 							{/if}
 						</div>
 					</div>
@@ -142,7 +281,41 @@
 
 		<!-- Input -->
 		<div class="px-3 pb-3 pt-2 border-t border-border shrink-0 safe-bottom">
+			<!-- Attached context files -->
+			{#if contextFiles.length > 0}
+				<div class="flex flex-wrap gap-1.5 mb-2">
+					{#each contextFiles as file, i}
+						<span class="inline-flex items-center gap-1 bg-warm rounded-md px-2 py-1 text-[11px] text-muted">
+							{#if file.isImage}
+								<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="10" height="10" rx="1" /><circle cx="4" cy="4" r="1" /><path d="M1 8l3-3 2 2 2-2 3 3" /></svg>
+							{:else}
+								<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1H3a1 1 0 00-1 1v8a1 1 0 001 1h6a1 1 0 001-1V4L7 1z" /><path d="M7 1v3h3" /></svg>
+							{/if}
+							{file.name}
+							<button class="hover:text-ink" onclick={() => removeContextFile(i)}>✕</button>
+						</span>
+					{/each}
+				</div>
+			{/if}
+
+			<input
+				bind:this={contextFileInput}
+				type="file"
+				accept=".txt,.csv,.tsv,.json,.md,.pdf,.log,.dat,.xml,image/*"
+				multiple
+				class="hidden"
+				onchange={handleContextFile}
+			/>
+
 			<div class="flex items-end gap-2">
+				<button
+					class="w-8 h-8 flex items-center justify-center rounded-md
+						   text-muted hover:bg-warm shrink-0 active:scale-95 transition-all"
+					onclick={() => contextFileInput?.click()}
+					title="Attach file for context"
+				>
+					<svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 8.5l-5.5 5.5a3.5 3.5 0 01-5-5L9 3.5a2.5 2.5 0 013.5 3.5l-5.5 5a1.5 1.5 0 01-2-2L10.5 4.5" /></svg>
+				</button>
 				<textarea
 					class="flex-1 bg-warm/60 border border-border rounded-lg px-3 py-2 text-sm
 						   resize-none outline-none placeholder:text-muted/40

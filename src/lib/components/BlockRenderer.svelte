@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { tick } from 'svelte';
+	import { marked } from 'marked';
 	import type { Block } from '$lib/db';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 
@@ -13,14 +15,36 @@
 	let editContent = $state(block.content || '');
 	let showDelete = $state(false);
 	let saveTimer: ReturnType<typeof setTimeout>;
+	let textareaEl: HTMLTextAreaElement | undefined = $state();
 
-	function handleInput(e: Event) {
-		const target = e.currentTarget as HTMLTextAreaElement;
-		editContent = target.value;
+	// Configure marked for safe inline rendering
+	marked.setOptions({ breaks: true, gfm: true });
 
-		// Auto-resize
-		target.style.height = 'auto';
-		target.style.height = target.scrollHeight + 'px';
+	// Keep editContent in sync if block changes externally
+	$effect(() => {
+		if (!editing) {
+			editContent = block.content || '';
+		}
+	});
+
+	// Auto-resize textarea whenever editContent changes or we enter edit mode
+	function autoResize() {
+		if (textareaEl) {
+			textareaEl.style.height = 'auto';
+			textareaEl.style.height = textareaEl.scrollHeight + 'px';
+		}
+	}
+
+	$effect(() => {
+		if (editing && textareaEl) {
+			textareaEl.focus();
+			autoResize();
+		}
+	});
+
+	function handleInput() {
+		editing = true;
+		autoResize();
 
 		// Debounced save
 		clearTimeout(saveTimer);
@@ -29,20 +53,23 @@
 
 	function handleBlur() {
 		clearTimeout(saveTimer);
+		// Always save current content
 		if (editContent !== block.content) {
 			onupdate(editContent);
 		}
-		if (block.type === 'text' && !editContent.trim()) {
-			// Delete empty text blocks
+		// Only delete if user has intentionally cleared a block that had content
+		if (block.type === 'text' && !editContent.trim() && block.content && block.content.trim()) {
 			ondelete();
 		}
 		editing = false;
 	}
 
-	function startEdit() {
+	async function startEdit() {
 		if (block.type === 'text') {
-			editing = true;
 			editContent = block.content || '';
+			editing = true;
+			await tick();
+			autoResize();
 		}
 	}
 
@@ -53,14 +80,14 @@
 			return {};
 		}
 	}
+
+	function renderMarkdown(text: string): string {
+		return marked.parse(text, { async: false }) as string;
+	}
 </script>
 
 <div
 	class="group relative"
-	role="button"
-	tabindex="0"
-	onclick={startEdit}
-	onkeydown={(e) => e.key === 'Enter' && startEdit()}
 	onpointerdown={() => (showDelete = true)}
 	onpointerup={() => setTimeout(() => (showDelete = false), 2000)}
 >
@@ -78,19 +105,25 @@
 
 	<!-- Text block -->
 	{#if block.type === 'text'}
-		{#if editing}
+		{#if editing || !block.content?.trim()}
 			<textarea
+				bind:this={textareaEl}
+				bind:value={editContent}
 				class="w-full bg-transparent text-sm text-ink
 					   resize-none outline-none paper-lines min-h-[2rem] px-1 leading-relaxed"
-				value={editContent}
 				oninput={handleInput}
 				onblur={handleBlur}
 				placeholder="Write something..."
-				autofocus
+				rows="1"
 			></textarea>
 		{:else}
-			<div class="text-sm text-ink paper-lines px-1 min-h-[2rem] whitespace-pre-wrap leading-relaxed">
-				{block.content || ''}
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="text-sm text-ink paper-lines px-1 min-h-[2rem] whitespace-pre-wrap leading-relaxed cursor-text"
+				onclick={startEdit}
+			>
+				{block.content}
 			</div>
 		{/if}
 
@@ -126,9 +159,19 @@
 				<svg class="w-3 h-3 text-muted" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="2.5" /></svg>
 				<span class="text-[11px] text-muted">AI Response</span>
 			</div>
-			<div class="text-sm text-ink whitespace-pre-wrap leading-relaxed">
-				{block.content}
-			</div>
+			{#if block.content?.startsWith('Q: ')}
+				{@const parts = block.content.split('\n\n')}
+				{@const question = parts[0].replace(/^Q: /, '')}
+				{@const answer = parts.slice(1).join('\n\n')}
+				<p class="text-[11px] text-muted italic mb-1.5 pb-1.5 border-b border-border/30">{question}</p>
+				<div class="prose-chat text-sm text-ink leading-relaxed">
+					{@html renderMarkdown(answer)}
+				</div>
+			{:else}
+				<div class="prose-chat text-sm text-ink leading-relaxed">
+					{@html renderMarkdown(block.content || '')}
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>

@@ -34,6 +34,8 @@
 				};
 			}}
 		>
+			<!-- Hidden username for accessibility -->
+			<input type="text" name="username" value="chemist" autocomplete="username" class="hidden" aria-hidden="true" tabindex="-1" />
 			<div>
 				<input
 					type="password"
