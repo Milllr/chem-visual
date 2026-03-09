@@ -193,7 +193,7 @@
 						   opacity-0 group-hover:opacity-100 active:scale-95"
 					onclick={(e) => { e.stopPropagation(); oneditdrawing?.(); }}
 				>
-					✏️ Edit Drawing
+					Edit Drawing
 				</button>
 			{/if}
 			{#if block.content}

@@ -35,7 +35,7 @@ export function buildMessages(
 	}
 
 	return [
-		{ role: 'system' as const, content: SYSTEM_PROMPT + context },
+		{ role: 'developer' as const, content: SYSTEM_PROMPT + context },
 		...chatHistory.slice(-40),
 		{ role: 'user' as const, content: userMessage }
 	];
@@ -74,19 +74,41 @@ export async function callOpenAI(
 		body: JSON.stringify({
 			model: 'gpt-5.1',
 			messages: apiMessages,
-			max_completion_tokens: 1500,
-			temperature: 0.3
+			max_completion_tokens: 16384
 		})
 	});
 	if (!res.ok) throw new Error(`OpenAI: ${await res.text()}`);
 	const data = await res.json();
-	return data.choices[0].message.content;
+	const content = data.choices?.[0]?.message?.content;
+	if (!content) {
+		// Reasoning models may put content elsewhere
+		const rc = data.choices?.[0]?.message?.reasoning_content;
+		if (rc) return rc;
+		throw new Error('Empty response from model');
+	}
+	return content;
 }
 
 export async function callPerplexity(
 	messages: { role: string; content: string }[],
 	apiKey: string
 ): Promise<string> {
+	// Perplexity requires alternating user/assistant messages after system
+	const filtered: { role: string; content: string }[] = [];
+	for (const msg of messages) {
+		if (msg.role === 'system') {
+			filtered.push(msg);
+			continue;
+		}
+		const last = filtered[filtered.length - 1];
+		if (last && last.role === msg.role && msg.role !== 'system') {
+			// Merge consecutive same-role messages
+			last.content += '\n\n' + msg.content;
+		} else {
+			filtered.push({ ...msg });
+		}
+	}
+
 	const res = await fetch('https://api.perplexity.ai/chat/completions', {
 		method: 'POST',
 		headers: {
@@ -95,7 +117,7 @@ export async function callPerplexity(
 		},
 		body: JSON.stringify({
 			model: 'sonar-pro',
-			messages,
+			messages: filtered,
 			max_tokens: 1500
 		})
 	});
@@ -115,17 +137,18 @@ export async function formulaToSmiles(formula: string, apiKey: string): Promise<
 			model: 'gpt-5-mini',
 			messages: [
 				{
-					role: 'system',
+					role: 'developer',
 					content:
 						"Convert the molecular formula or chemical name to a valid SMILES string. Return ONLY the SMILES string. If ambiguous, use the most common isomer. If it's already SMILES, return as-is."
 				},
 				{ role: 'user', content: formula }
 			],
-			max_completion_tokens: 100,
-			temperature: 0
+			max_completion_tokens: 4096
 		})
 	});
 	if (!res.ok) throw new Error('SMILES conversion failed');
 	const data = await res.json();
-	return data.choices[0].message.content.trim();
+	const content = data.choices?.[0]?.message?.content;
+	if (!content) throw new Error('Empty SMILES response');
+	return content.trim();
 }

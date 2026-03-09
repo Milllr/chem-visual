@@ -100,15 +100,15 @@ Only return the JSON array, no other text.`;
 			},
 			body: JSON.stringify({
 				model: 'gpt-5-mini',
-				messages: [{ role: 'user', content: prompt }],
-				max_completion_tokens: 500,
-				temperature: 0.5
+				messages: [{ role: 'developer', content: 'Respond only with the JSON array requested. No other text.' }, { role: 'user', content: prompt }],
+				max_completion_tokens: 8192
 			})
 		});
 
-		if (!res.ok) throw new Error(`OpenAI: ${res.status}`);
+		if (!res.ok) throw new Error(`OpenAI: ${res.status} ${await res.text()}`);
 		const data = await res.json();
-		const content = data.choices[0].message.content.trim();
+		const content = data.choices?.[0]?.message?.content;
+		if (!content) throw new Error('Empty response from model');
 
 		// Parse JSON from response (handle markdown code blocks)
 		const jsonStr = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

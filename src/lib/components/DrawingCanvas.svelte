@@ -494,7 +494,7 @@
 		<div class="flex items-center justify-center gap-2 max-w-lg mx-auto flex-wrap">
 			<!-- Tool buttons -->
 			<div class="flex rounded-md border border-border overflow-hidden">
-				{#each [['pen', 'Pen'], ['highlighter', 'Hi-lite'], ['eraser', 'Eraser'], ['arrow', '→'], ['line', 'Line'], ['move', '✋']] as [t, label]}
+				{#each [['pen', 'Pen'], ['highlighter', 'Hilite'], ['eraser', 'Eraser'], ['arrow', 'Arrow'], ['line', 'Line'], ['move', 'Move']] as [t, label]}
 					<button
 						class="px-2.5 py-1 text-[11px] transition-colors {tool === t ? 'bg-accent text-cream' : 'text-muted hover:bg-warm'}"
 						onclick={() => (tool = t as Tool)}
