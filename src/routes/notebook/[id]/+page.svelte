@@ -11,6 +11,7 @@
 	import EditNotebookModal from '$lib/components/EditNotebookModal.svelte';
 	import MoleculeInput from '$lib/components/MoleculeInput.svelte';
 	import PageTabs from '$lib/components/PageTabs.svelte';
+	import TableEditor from '$lib/components/TableEditor.svelte';
 	import { fly } from 'svelte/transition';
 
 	let { data }: { data: PageData } = $props();
@@ -309,6 +310,10 @@
 	let drawingMode = $state(false);
 	let editingDrawingBlock = $state<Block | null>(null);
 
+	// Table editor
+	let tableMode = $state(false);
+	let editingTableBlock = $state<Block | null>(null);
+
 	async function saveDrawing(imageBlob: Blob) {
 		const editBlock = editingDrawingBlock;
 		drawingMode = false;
@@ -358,6 +363,51 @@
 	function startEditDrawing(block: Block) {
 		editingDrawingBlock = block;
 		drawingMode = true;
+	}
+
+	// Table
+	function startEditTable(block: Block) {
+		editingTableBlock = block;
+		tableMode = true;
+	}
+
+	async function saveTable(csvContent: string, metadata: Record<string, string>) {
+		const editBlock = editingTableBlock;
+		tableMode = false;
+		editingTableBlock = null;
+
+		try {
+			if (editBlock) {
+				// Update existing data block
+				const res = await fetch(`/api/blocks/${editBlock.id}`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ content: csvContent, metadata: JSON.stringify(metadata) })
+				});
+				if (res.ok) {
+					const updated: Block = await res.json();
+					blocks = blocks.map(b => b.id === updated.id ? updated : b);
+				}
+			} else {
+				// Create new data block
+				const res = await fetch('/api/blocks', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						page_id: currentPageId,
+						type: 'data',
+						content: csvContent,
+						metadata
+					})
+				});
+				if (res.ok) {
+					const block: Block = await res.json();
+					blocks = [...blocks, block];
+				}
+			}
+		} catch (err) {
+			console.error('Table save error:', err);
+		}
 	}
 
 	// Block reordering
@@ -785,7 +835,7 @@
 							isLast={i === blocks.length - 1}
 							ondragstart={(e) => handleBlockDragStart(e, block.id)}
 							ondragover={handleBlockDragOver}
-							ondrop={(e) => handleBlockDrop(e, block.id)}						oneditdrawing={() => startEditDrawing(block)}						/>
+							ondrop={(e) => handleBlockDrop(e, block.id)}						oneditdrawing={() => startEditDrawing(block)}						onedittable={() => startEditTable(block)}						/>
 					</div>
 				{/each}
 			</div>
@@ -800,6 +850,7 @@
 		onuploaddata={() => dataInput?.click()}
 		onscannotes={() => scanInput?.click()}
 		onaddmolecule={() => (moleculeInputOpen = true)}
+		onaddtable={() => (tableMode = true)}
 		ondraw={() => (drawingMode = true)}
 		ontoggleChat={() => (chatOpen = !chatOpen)}
 		{chatOpen}
@@ -812,6 +863,16 @@
 		onsave={saveDrawing}
 		onclose={() => { drawingMode = false; editingDrawingBlock = null; }}
 		initialImageUrl={editingDrawingBlock?.image_url || undefined}
+	/>
+{/if}
+
+<!-- Table editor -->
+{#if tableMode}
+	<TableEditor
+		onsave={saveTable}
+		onclose={() => { tableMode = false; editingTableBlock = null; }}
+		initialCsv={editingTableBlock?.content || undefined}
+		initialMetadata={editingTableBlock?.metadata ? JSON.parse(editingTableBlock.metadata) : undefined}
 	/>
 {/if}
 

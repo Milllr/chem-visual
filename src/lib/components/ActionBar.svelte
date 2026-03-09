@@ -6,12 +6,13 @@
 		onuploaddata: () => void;
 		onscannotes: () => void;
 		onaddmolecule: () => void;
+		onaddtable: () => void;
 		ondraw: () => void;
 		ontoggleChat: () => void;
 		chatOpen?: boolean;
 	}
 
-	let { onaddtext, onuploadimage, onuploaddocument, onuploaddata, onscannotes, onaddmolecule, ondraw, ontoggleChat, chatOpen = false }: Props = $props();
+	let { onaddtext, onuploadimage, onuploaddocument, onuploaddata, onscannotes, onaddmolecule, onaddtable, ondraw, ontoggleChat, chatOpen = false }: Props = $props();
 	let showUploadMenu = $state(false);
 </script>
 
@@ -87,6 +88,21 @@
 		>
 			<svg class="w-5 h-5 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10,3 L16,6.5 L16,13.5 L10,17 L4,13.5 L4,6.5 Z" /><circle cx="10" cy="10" r="3.5" stroke-width="1" /></svg>
 			<span class="text-[10px] text-muted">Molecule</span>
+		</button>
+
+		<!-- Table -->
+		<button
+			class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md
+				   active:bg-warm transition-colors min-w-[44px]"
+			onclick={() => { showUploadMenu = false; onaddtable(); }}
+		>
+			<svg class="w-5 h-5 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="2" y="3" width="16" height="14" rx="2" />
+				<line x1="2" y1="7" x2="18" y2="7" />
+				<line x1="7.5" y1="7" x2="7.5" y2="17" />
+				<line x1="12.5" y1="7" x2="12.5" y2="17" />
+			</svg>
+			<span class="text-[10px] text-muted">Table</span>
 		</button>
 
 		<!-- Draw -->

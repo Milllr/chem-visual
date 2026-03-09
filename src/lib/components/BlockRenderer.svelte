@@ -16,9 +16,10 @@
 		ondragover?: (e: DragEvent) => void;
 		ondrop?: (e: DragEvent) => void;
 		oneditdrawing?: () => void;
+		onedittable?: () => void;
 	}
 
-	let { block, onupdate, ondelete, onmoveup, onmovedown, isFirst = false, isLast = false, ondragstart, ondragover, ondrop, oneditdrawing }: Props = $props();
+	let { block, onupdate, ondelete, onmoveup, onmovedown, isFirst = false, isLast = false, ondragstart, ondragover, ondrop, oneditdrawing, onedittable }: Props = $props();
 	let editing = $state(false);
 	let editContent = $state(block.content || '');
 	let showDelete = $state(false);
@@ -317,7 +318,7 @@
 	{:else if block.type === 'data'}
 		{@const meta = getMetadata()}
 		{@const rows = parseCsv(block.content || '')}
-		<div class="rounded-lg border border-dashed border-border overflow-hidden">
+		<div class="rounded-lg border border-dashed border-border overflow-hidden relative">
 			{#if meta.filename}
 				<div class="px-3 py-1.5 bg-warm/30 border-b border-border flex items-center gap-2">
 					<svg width="12" height="12" viewBox="0 0 16 16" fill="none" class="text-muted shrink-0">
@@ -359,6 +360,16 @@
 				<div class="px-3 py-1 bg-warm/20 border-t border-border">
 					<span class="text-[10px] text-muted">{rows.length - 1} rows × {rows[0]?.length || 0} columns</span>
 				</div>
+			{/if}
+			{#if onedittable}
+				<button
+					class="absolute bottom-2 right-2 px-2.5 py-1 rounded-md bg-cream/90 border border-border
+						   text-[11px] text-muted hover:text-ink hover:bg-cream transition-colors
+						   opacity-0 group-hover:opacity-100 active:scale-95"
+					onclick={(e) => { e.stopPropagation(); onedittable?.(); }}
+				>
+					Edit Table
+				</button>
 			{/if}
 		</div>
 	{/if}
