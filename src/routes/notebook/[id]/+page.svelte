@@ -14,6 +14,7 @@
 	import PageTabs from '$lib/components/PageTabs.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
 	import ReagentLibrary from '$lib/components/ReagentLibrary.svelte';
+	import SpotlightSearch from '$lib/components/SpotlightSearch.svelte';
 	import { fly } from 'svelte/transition';
 
 	let { data }: { data: PageData } = $props();
@@ -29,6 +30,7 @@
 	let compounds = $state<Compound[]>([]);
 	let editModalOpen = $state(false);
 	let libraryOpen = $state(false);
+	let searchOpen = $state(false);
 
 	// Sync from server data on load
 	$effect(() => {
@@ -733,7 +735,12 @@
 	<title>{notebook.title} — Chem Journal</title>
 </svelte:head>
 
-<svelte:window onpaste={handlePaste} />
+<svelte:window onpaste={handlePaste} onkeydown={(e) => {
+	if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+		e.preventDefault();
+		searchOpen = !searchOpen;
+	}
+}} />
 
 <!-- Hidden file inputs -->
 <input
@@ -794,6 +801,18 @@
 					{notebook.title}
 				</h1>
 			</div>
+
+			<!-- Search button -->
+			<button
+				class="w-8 h-8 flex items-center justify-center rounded-md
+					   hover:bg-warm active:bg-warm transition-colors text-muted"
+				onclick={() => (searchOpen = true)}
+				aria-label="Search"
+			>
+				<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+					<circle cx="9" cy="9" r="5.5" /><path d="M13 13L17 17" />
+				</svg>
+			</button>
 
 			<!-- Edit notebook button -->
 			<button
@@ -968,3 +987,10 @@
 		</div>
 	</div>
 {/if}
+
+<SpotlightSearch
+	open={searchOpen}
+	onclose={() => (searchOpen = false)}
+	currentNotebookId={data.notebook.id}
+	currentNotebookTitle={data.notebook.title}
+/>
