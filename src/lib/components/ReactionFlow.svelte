@@ -120,7 +120,7 @@
 	<main class="flex-1 overflow-auto">
 		{#if steps.length === 0}
 			<div class="text-center py-16 px-6">
-				<p class="text-2xl text-muted/30 mb-2">⚗️</p>
+				<svg class="w-10 h-10 mx-auto text-muted/20 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16" /><path d="M6 20V10l3-7h6l3 7v10" /><path d="M6 10h12" /><circle cx="12" cy="15" r="2" /></svg>
 				<p class="font-heading text-sm text-muted/60 mb-1">No reaction steps yet</p>
 				<p class="text-xs text-muted/40 mb-4">Add steps to build your reaction flow</p>
 			</div>
@@ -176,7 +176,7 @@
 								<!-- Conditions -->
 								{#if step.conditions}
 									<div class="px-3 py-1.5 bg-accent/5 border-t border-border/50">
-										<p class="text-[10px] text-accent italic">⚙ {step.conditions}</p>
+										<p class="text-[10px] text-accent italic">{step.conditions}</p>
 									</div>
 								{/if}
 

@@ -64,10 +64,10 @@
 
 	function ghsPictogramLabel(code: string): string {
 		const map: Record<string, string> = {
-			GHS01: '💥', GHS02: '🔥', GHS03: '🔥⭕', GHS04: '🫧',
-			GHS05: '⚗️', GHS06: '☠️', GHS07: '⚠️', GHS08: '🫁', GHS09: '🌊'
+			GHS01: 'EXPL', GHS02: 'FLAM', GHS03: 'OXID', GHS04: 'GAS',
+			GHS05: 'CORR', GHS06: 'TOXIC', GHS07: 'IRRIT', GHS08: 'HLTH', GHS09: 'ENV'
 		};
-		return map[code] || '⚠️';
+		return map[code] || code;
 	}
 
 	function ghsPictogramName(code: string): string {
@@ -196,8 +196,8 @@
 								{#if c.source === 'ai'}
 									<div class="mt-2 flex items-center gap-1.5">
 										<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-ink/10
-													 text-[10px] text-blue-ink border border-blue-ink/20">
-											🤖 AI-estimated
+												 text-[10px] text-blue-ink border border-blue-ink/20 font-mono">
+										AI-estimated
 											{#if c.confidence}
 												· {c.confidence} confidence
 											{/if}
@@ -225,7 +225,7 @@
 				</div>
 			{:else}
 				<div class="text-center py-8 space-y-2">
-					<p class="text-lg text-muted/30">🧪</p>
+					<svg class="w-8 h-8 mx-auto text-muted/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="M16 16L21 21" /></svg>
 					<p class="text-xs text-muted/40">Search a CAS number to find compound details</p>
 				</div>
 			{/if}

@@ -110,13 +110,13 @@
 		try { return JSON.parse(h) || []; } catch { return []; }
 	}
 
-	// GHS pictogram emoji map
-	function ghsEmoji(code: string): string {
+	// GHS pictogram label (no emoji)
+	function ghsLabel(code: string): string {
 		const map: Record<string, string> = {
-			'GHS01': '💥', 'GHS02': '🔥', 'GHS03': '🔵', 'GHS04': '🫧',
-			'GHS05': '⚗️', 'GHS06': '☠️', 'GHS07': '⚠️', 'GHS08': '🫁', 'GHS09': '🌿'
+			'GHS01': 'EXPL', 'GHS02': 'FLAM', 'GHS03': 'OXID', 'GHS04': 'GAS',
+			'GHS05': 'CORR', 'GHS06': 'TOXIC', 'GHS07': 'IRRIT', 'GHS08': 'HLTH', 'GHS09': 'ENV'
 		};
-		return map[code] || '⚠️';
+		return map[code] || code;
 	}
 </script>
 
@@ -169,7 +169,7 @@
 				<div class="p-4 space-y-3">
 					{#if reagents.length === 0}
 						<div class="text-center py-12">
-							<p class="text-2xl text-muted/30 mb-2">🧪</p>
+						<svg class="w-10 h-10 mx-auto text-muted/20 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l2 4H7l2-4z" /><path d="M7 7v10a3 3 0 003 3h4a3 3 0 003-3V7" /><path d="M10 12h4" /></svg>
 							<p class="font-heading text-sm text-muted/60 mb-1">No reagents yet</p>
 							<p class="text-xs text-muted/40 mb-4">Search by CAS number to add compounds</p>
 						</div>
@@ -222,8 +222,8 @@
 											<p class="text-[10px] font-medium text-muted mb-1">GHS Hazards</p>
 											<div class="flex flex-wrap gap-1">
 												{#each hazards as h}
-													<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-ink/8 text-[10px] text-red-ink">
-														{ghsEmoji(h.pictogram)} {h.code}
+											<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-ink/8 text-[10px] text-red-ink font-mono">
+													{ghsLabel(h.pictogram)} · {h.code}
 													</span>
 												{/each}
 											</div>
@@ -265,7 +265,7 @@
 				<div class="p-4 space-y-3">
 					{#if reactions.length === 0}
 						<div class="text-center py-12">
-							<p class="text-2xl text-muted/30 mb-2">⚗️</p>
+						<svg class="w-10 h-10 mx-auto text-muted/20 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16" /><path d="M6 20V10l3-7h6l3 7v10" /><path d="M6 10h12" /><circle cx="12" cy="15" r="2" /></svg>
 							<p class="font-heading text-sm text-muted/60 mb-1">No reactions yet</p>
 							<p class="text-xs text-muted/40 mb-4">Create a reaction to plan your synthesis</p>
 						</div>
