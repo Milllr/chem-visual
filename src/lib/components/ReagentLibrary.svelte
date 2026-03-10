@@ -113,19 +113,6 @@
 		selectedReaction = null;
 	}
 
-	// Parse hazards JSON safely
-	function parseHazards(h: string): { code: string; statement: string; pictogram: string }[] {
-		try { return JSON.parse(h) || []; } catch { return []; }
-	}
-
-	// GHS pictogram label (no emoji)
-	function ghsLabel(code: string): string {
-		const map: Record<string, string> = {
-			'GHS01': 'EXPL', 'GHS02': 'FLAM', 'GHS03': 'OXID', 'GHS04': 'GAS',
-			'GHS05': 'CORR', 'GHS06': 'TOXIC', 'GHS07': 'IRRIT', 'GHS08': 'HLTH', 'GHS09': 'ENV'
-		};
-		return map[code] || code;
-	}
 </script>
 
 {#if open}
@@ -144,7 +131,7 @@
 				</button>
 				<div class="flex-1">
 					<h2 class="font-heading text-lg text-ink tracking-tight">Lab Library</h2>
-					<p class="text-[10px] text-muted -mt-0.5">Reagents, reactions, compounds & tools</p>
+					<p class="text-xs text-muted -mt-0.5">Reagents, reactions, compounds & tools</p>
 				</div>
 				<div class="w-9 h-9 flex items-center justify-center rounded-xl bg-accent/8 text-accent">
 					<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -162,7 +149,7 @@
 					{ id: 'tools', label: 'Tools', count: null }
 				] as t}
 					<button
-						class="flex-1 px-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-center
+						class="flex-1 px-1.5 py-1.5 rounded-lg text-sm font-medium transition-all text-center
 							{tab === t.id ? 'bg-ink text-cream shadow-sm' : 'text-muted bg-warm/40 hover:bg-warm'}"
 						onclick={() => (tab = t.id as typeof tab)}
 					>
@@ -180,13 +167,13 @@
 					{#if reagents.length === 0}
 						<div class="text-center py-12">
 						<svg class="w-10 h-10 mx-auto text-muted/20 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6l2 4H7l2-4z" /><path d="M7 7v10a3 3 0 003 3h4a3 3 0 003-3V7" /><path d="M10 12h4" /></svg>
-							<p class="font-heading text-sm text-muted/60 mb-1">No reagents yet</p>
-							<p class="text-xs text-muted/40 mb-4">Search by CAS number to add compounds</p>
+							<p class="font-heading text-base text-muted/60 mb-1">No reagents yet</p>
+							<p class="text-sm text-muted/40 mb-4">Search by CAS number to add compounds</p>
 						</div>
 					{/if}
 
 					{#each reagents as reagent (reagent.id)}
-						{@const hazards = parseHazards(reagent.hazards)}
+
 						<div
 							class="rounded-xl border border-border bg-card/50 overflow-hidden"
 							transition:fly={{ y: 10, duration: 200 }}
@@ -202,13 +189,13 @@
 									</div>
 								{/if}
 								<div class="flex-1 min-w-0">
-									<p class="text-sm font-medium text-ink truncate">{reagent.name}</p>
-									<p class="text-xs text-muted font-mono">{reagent.cas}</p>
+									<p class="text-base font-medium text-ink truncate">{reagent.name}</p>
+									<p class="text-sm text-muted font-mono">{reagent.cas}</p>
 									<div class="flex items-center gap-2 mt-0.5">
-										<span class="text-xs text-muted">{reagent.formula}</span>
-										<span class="text-[10px] text-muted/60">MW {reagent.molar_mass}</span>
+										<span class="text-sm text-muted">{reagent.formula}</span>
+										<span class="text-xs text-muted/60">MW {reagent.molar_mass}</span>
 										{#if reagent.density}
-											<span class="text-[10px] text-muted/60">d={reagent.density}</span>
+											<span class="text-xs text-muted/60">d={reagent.density}</span>
 										{/if}
 									</div>
 								</div>
@@ -223,25 +210,12 @@
 							{#if expandedReagent === reagent.id}
 								<div class="px-3 pb-3 border-t border-border/50 pt-2 space-y-2" transition:fly={{ y: -5, duration: 150 }}>
 									{#if reagent.description}
-										<p class="text-xs text-muted leading-relaxed">{reagent.description}</p>
+										<p class="text-sm text-muted leading-relaxed">{reagent.description}</p>
 									{/if}
 
-									<!-- Hazards -->
-									{#if hazards.length > 0}
-										<div>
-											<p class="text-[10px] font-medium text-muted mb-1">GHS Hazards</p>
-											<div class="flex flex-wrap gap-1">
-												{#each hazards as h}
-											<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-ink/8 text-[10px] text-red-ink font-mono">
-													{ghsLabel(h.pictogram)} · {h.code}
-													</span>
-												{/each}
-											</div>
-										</div>
-									{/if}
 
 									<!-- Properties -->
-									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+									<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
 										<div><span class="text-muted">Formula:</span> <span class="text-ink">{reagent.formula}</span></div>
 										<div><span class="text-muted">MW:</span> <span class="text-ink">{reagent.molar_mass} g/mol</span></div>
 										{#if reagent.density}
@@ -252,7 +226,7 @@
 									<div class="flex items-center gap-2 pt-1">
 										{#if reagent.smiles}
 											<button
-												class="text-xs text-accent hover:bg-accent/10 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
+												class="text-sm text-accent hover:bg-accent/10 px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1"
 												onclick={() => {
 													oninsertblock('molecule', reagent.smiles, {
 														formula: reagent.name,
@@ -268,7 +242,7 @@
 											</button>
 										{/if}
 										<button
-											class="text-xs text-red-ink hover:bg-red-ink/10 px-2 py-1 rounded-lg transition-colors"
+											class="text-sm text-red-ink hover:bg-red-ink/10 px-2.5 py-1.5 rounded-lg transition-colors"
 											onclick={() => deleteReagent(reagent.id)}
 										>
 											Remove
@@ -295,8 +269,8 @@
 					{#if reactions.length === 0}
 						<div class="text-center py-12">
 						<svg class="w-10 h-10 mx-auto text-muted/20 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16" /><path d="M6 20V10l3-7h6l3 7v10" /><path d="M6 10h12" /><circle cx="12" cy="15" r="2" /></svg>
-							<p class="font-heading text-sm text-muted/60 mb-1">No reactions yet</p>
-							<p class="text-xs text-muted/40 mb-4">Create a reaction to plan your synthesis</p>
+							<p class="font-heading text-base text-muted/60 mb-1">No reactions yet</p>
+							<p class="text-sm text-muted/40 mb-4">Create a reaction to plan your synthesis</p>
 						</div>
 					{/if}
 
@@ -313,13 +287,13 @@
 									onclick={() => (selectedReaction = reaction)}
 								>
 									<div class="flex items-center gap-2">
-										<p class="text-sm font-medium text-ink truncate">{reaction.name || 'Untitled Reaction'}</p>
+										<p class="text-base font-medium text-ink truncate">{reaction.name || 'Untitled Reaction'}</p>
 										{#if yld > 0}
-											<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold
+											<span class="shrink-0 px-1.5 py-0.5 rounded text-xs font-mono font-semibold
 												{yld >= 80 ? 'text-green-700 bg-green-700/8' : yld >= 50 ? 'text-amber-600 bg-amber-600/8' : 'text-red-ink bg-red-ink/8'}">{yld.toFixed(0)}%</span>
 										{/if}
 									</div>
-									<p class="text-xs text-muted mt-0.5">{stepCount} step{stepCount !== 1 ? 's' : ''}</p>
+									<p class="text-sm text-muted mt-0.5">{stepCount} step{stepCount !== 1 ? 's' : ''}</p>
 								</button>
 								<button
 									class="px-3 self-stretch flex items-center text-muted/40 hover:text-red-ink hover:bg-red-ink/5 transition-colors border-l border-border/50"
@@ -377,5 +351,6 @@
 		onupdate={(r) => { updateReaction(r); selectedReaction = r; }}
 		ondelete={() => { selectedReaction = null; deleteReaction(reactionId); }}
 		onclose={() => (selectedReaction = null)}
+		{oninsertblock}
 	/>
 {/if}

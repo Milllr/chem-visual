@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { marked } from 'marked';
-	import type { Block } from '$lib/db';
+	import type { Block, ReactionStep, ChemSpecies } from '$lib/db';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 
 	interface Props {
@@ -372,6 +372,82 @@
 				</button>
 			{/if}
 		</div>
+
+	{:else if block.type === 'reaction_step'}
+		{@const stepData = (() => { try { return JSON.parse(block.content || '{}') as ReactionStep; } catch { return null; } })()}
+		{@const meta = getMetadata()}
+		{#if stepData}
+			<div class="rounded-lg border border-dashed border-border bg-cream overflow-hidden">
+				{#if meta.reaction_name}
+					<div class="px-3 py-1.5 bg-warm/30 border-b border-border flex items-center gap-2">
+						<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" class="text-muted shrink-0"><path d="M2 8h12M10 4l4 4-4 4" /></svg>
+						<span class="text-xs font-medium text-muted truncate">{meta.reaction_name}{meta.step_index != null ? ` — Step ${meta.step_index + 1}` : ''}</span>
+					</div>
+				{/if}
+				<div class="overflow-x-auto">
+					<div class="flex items-center gap-3 px-4 py-3 min-w-max">
+						<!-- Reactants -->
+						{#each stepData.reactants as sp, j}
+							<div class="flex flex-col items-center w-[80px] shrink-0">
+								{#if sp.smiles}
+									<div class="w-14 h-14 rounded-lg bg-white border border-border/50 overflow-hidden mb-1">
+										<MoleculeRenderer smiles={sp.smiles} width={56} height={56} />
+									</div>
+								{:else}
+									<div class="w-14 h-14 rounded-lg border border-border/50 flex items-center justify-center mb-1 bg-warm/20">
+										<span class="text-[10px] text-muted text-center px-1 leading-tight">{sp.formula || '?'}</span>
+									</div>
+								{/if}
+								<span class="text-[10px] text-ink text-center leading-tight truncate w-full">{sp.name || sp.formula}</span>
+								<span class="text-[9px] text-muted font-mono">{sp.amount}{sp.unit === 'mol' ? ' mol' : sp.unit === 'g' ? ' g' : ' mL'}</span>
+							</div>
+							{#if j < stepData.reactants.length - 1}
+								<span class="text-lg text-border font-light select-none">+</span>
+							{/if}
+						{/each}
+
+						<!-- Arrow with conditions -->
+						<div class="flex flex-col items-center px-3 min-w-[90px]">
+							{#if stepData.conditions_above}
+								<span class="text-[10px] text-muted text-center mb-0.5 max-w-[100px] leading-tight">{stepData.conditions_above}</span>
+							{/if}
+							<svg width="60" height="14" viewBox="0 0 60 14" class="text-ink shrink-0">
+								<line x1="0" y1="7" x2="52" y2="7" stroke="currentColor" stroke-width="1.5" />
+								<polygon points="52,3 60,7 52,11" fill="currentColor" />
+							</svg>
+							{#if stepData.conditions_below}
+								<span class="text-[10px] text-muted text-center mt-0.5 max-w-[100px] leading-tight">{stepData.conditions_below}</span>
+							{/if}
+						</div>
+
+						<!-- Products -->
+						{#each stepData.products as sp, j}
+							<div class="flex flex-col items-center w-[80px] shrink-0">
+								{#if sp.smiles}
+									<div class="w-14 h-14 rounded-lg bg-white border border-border/50 overflow-hidden mb-1">
+										<MoleculeRenderer smiles={sp.smiles} width={56} height={56} />
+									</div>
+								{:else}
+									<div class="w-14 h-14 rounded-lg border border-border/50 flex items-center justify-center mb-1 bg-warm/20">
+										<span class="text-[10px] text-muted text-center px-1 leading-tight">{sp.formula || '?'}</span>
+									</div>
+								{/if}
+								<span class="text-[10px] text-ink text-center leading-tight truncate w-full">{sp.name || sp.formula}</span>
+								<span class="text-[9px] text-muted font-mono">{sp.amount}{sp.unit === 'mol' ? ' mol' : sp.unit === 'g' ? ' g' : ' mL'}</span>
+							</div>
+							{#if j < stepData.products.length - 1}
+								<span class="text-lg text-border font-light select-none">+</span>
+							{/if}
+						{/each}
+					</div>
+				</div>
+				{#if stepData.notes}
+					<div class="px-3 py-1.5 bg-warm/20 border-t border-border">
+						<span class="text-[10px] text-muted italic">{stepData.notes}</span>
+					</div>
+				{/if}
+			</div>
+		{/if}
 	{/if}
 	</div>
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { PageData } from './$types';
 	import type { Block, ChatMessage, Page, Notebook, Reagent, Reaction, Compound } from '$lib/db';
@@ -937,6 +938,10 @@
 		if (res.ok) {
 			const block = await res.json();
 			blocks = [...blocks, block];
+			libraryOpen = false;
+			await tick();
+			const el = document.getElementById(`block-${block.id}`);
+			if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 		}
 	}}
 />

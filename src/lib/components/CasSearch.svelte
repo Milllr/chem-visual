@@ -61,22 +61,6 @@
 		candidates = [];
 		searched = false;
 	}
-
-	function ghsPictogramLabel(code: string): string {
-		const map: Record<string, string> = {
-			GHS01: 'EXPL', GHS02: 'FLAM', GHS03: 'OXID', GHS04: 'GAS',
-			GHS05: 'CORR', GHS06: 'TOXIC', GHS07: 'IRRIT', GHS08: 'HLTH', GHS09: 'ENV'
-		};
-		return map[code] || code;
-	}
-
-	function ghsPictogramName(code: string): string {
-		const map: Record<string, string> = {
-			GHS01: 'Explosive', GHS02: 'Flammable', GHS03: 'Oxidizer', GHS04: 'Compressed Gas',
-			GHS05: 'Corrosive', GHS06: 'Toxic', GHS07: 'Irritant', GHS08: 'Health Hazard', GHS09: 'Environmental'
-		};
-		return map[code] || code;
-	}
 </script>
 
 {#if open}
@@ -174,22 +158,6 @@
 
 								{#if c.iupac_name && c.iupac_name !== c.name}
 									<p class="text-[10px] text-muted/60 mt-1 italic truncate">IUPAC: {c.iupac_name}</p>
-								{/if}
-
-								<!-- GHS Hazards -->
-								{#if c.hazards && c.hazards.length > 0}
-									{@const uniquePictograms = [...new Set(c.hazards.map(h => h.pictogram).filter(Boolean))]}
-									<div class="mt-2 flex flex-wrap gap-1.5">
-										{#each uniquePictograms as pic}
-											<span
-												class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-red-ink/10
-													   text-[10px] text-red-ink border border-red-ink/20"
-												title={ghsPictogramName(pic)}
-											>
-												{ghsPictogramLabel(pic)} {ghsPictogramName(pic)}
-											</span>
-										{/each}
-									</div>
 								{/if}
 
 								<!-- AI confidence badge -->

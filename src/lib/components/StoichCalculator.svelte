@@ -108,17 +108,17 @@
 					<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5L5 15M5 5L15 15" /></svg>
 				</button>
 			</div>
-			<p class="text-[10px] text-muted">Calculate masses from molar equivalents relative to a reference reagent</p>
+			<p class="text-xs text-muted">Calculate masses from molar equivalents relative to a reference reagent</p>
 		</div>
 
 		<!-- Reference species picker -->
 		<div class="px-4 pb-3 shrink-0 border-b border-border">
 			<div class="rounded-lg bg-warm/40 border border-border p-3 space-y-2">
 				<div class="flex items-center gap-2">
-					<span class="text-[10px] font-semibold text-muted uppercase tracking-wide shrink-0">Reference (1.0 equiv)</span>
+					<span class="text-xs font-semibold text-muted uppercase tracking-wide shrink-0">Reference (1.0 equiv)</span>
 				</div>
 				<select
-					class="w-full bg-cream border border-border rounded-lg px-2 py-1.5 text-xs outline-none"
+					class="w-full bg-cream border border-border rounded-lg px-2.5 py-2 text-sm outline-none"
 					value={refIdx}
 					onchange={(e) => { refIdx = +e.currentTarget.value; equivEdits = {}; massEdits = {}; }}
 				>
@@ -127,7 +127,7 @@
 					{/each}
 				</select>
 				<div class="flex items-center gap-2">
-					<label class="text-xs text-ink shrink-0">Mass:</label>
+					<label class="text-sm text-ink shrink-0">Mass:</label>
 					<input
 						type="number" step="any" min="0" bind:value={refMass}
 						class="flex-1 bg-cream border border-border rounded-lg px-3 py-1.5 text-sm font-mono text-right outline-none focus:border-muted"
@@ -135,7 +135,7 @@
 					<span class="text-xs text-muted shrink-0">g</span>
 				</div>
 				{#if refMoles > 0}
-					<p class="text-[10px] text-muted">= {fmtN(refMoles)} mol ({fmtN(refMoles * 1000, 2)} mmol)</p>
+					<p class="text-xs text-muted">= {fmtN(refMoles)} mol ({fmtN(refMoles * 1000, 2)} mmol)</p>
 				{/if}
 			</div>
 		</div>
@@ -147,32 +147,32 @@
 					<div class="rounded-lg border border-border bg-card/50 p-2.5 space-y-1.5">
 						<div class="flex items-center justify-between">
 							<div class="min-w-0">
-								<p class="text-xs font-medium text-ink truncate">{row.species.name}</p>
-								<p class="text-[10px] text-muted">MW {row.species.mw.toFixed(2)}</p>
+								<p class="text-sm font-medium text-ink truncate">{row.species.name}</p>
+								<p class="text-xs text-muted">MW {row.species.mw.toFixed(2)}</p>
 							</div>
 							{#if equivEdits[row.idx] != null || massEdits[row.idx] != null}
-								<button class="text-[10px] text-accent hover:underline shrink-0" onclick={() => resetEquiv(row.idx)}>reset</button>
+								<button class="text-xs text-accent hover:underline shrink-0" onclick={() => resetEquiv(row.idx)}>reset</button>
 							{/if}
 						</div>
 						<div class="grid grid-cols-2 gap-2">
 							<!-- Equiv input (forward) -->
 							<div>
-								<label class="text-[10px] text-muted block mb-0.5">Equiv</label>
+								<label class="text-xs text-muted block mb-0.5">Equiv</label>
 								<input
 									type="number" step="any" min="0"
 									value={row.backCalc ? row.equiv.toFixed(3) : (equivEdits[row.idx] ?? row.stoichEquiv)}
-								class="w-full bg-warm/50 border rounded-lg px-2 py-1 text-xs font-mono outline-none transition-colors
+								class="w-full bg-warm/50 border rounded-lg px-2 py-1.5 text-sm font-mono outline-none transition-colors
 									{!row.backCalc ? 'border-blue-ink/40' : 'border-border'}
 									{!row.backCalc && equivEdits[row.idx] != null ? 'bg-blue-ink/5' : ''}"
 									oninput={(e) => handleEquivInput(row.idx, e.currentTarget.value)}
 								/>
 								{#if row.stoichEquiv !== 1}
-									<p class="text-[9px] text-muted/50 mt-0.5">stoich: {fmtN(row.stoichEquiv, 2)}</p>
+									<p class="text-[10px] text-muted/50 mt-0.5">stoich: {fmtN(row.stoichEquiv, 2)}</p>
 								{/if}
 							</div>
 							<!-- Mass input (back-calc) -->
 							<div>
-								<label class="text-[10px] text-muted block mb-0.5">
+								<label class="text-xs text-muted block mb-0.5">
 									Mass (g)
 									{#if row.backCalc}
 										<span class="text-accent ml-1">← back-calc</span>
@@ -181,14 +181,14 @@
 								<input
 									type="number" step="any" min="0"
 									value={row.backCalc ? massEdits[row.idx] : row.mass.toFixed(4)}
-								class="w-full bg-warm/50 border rounded-lg px-2 py-1 text-xs font-mono outline-none font-semibold transition-colors
+								class="w-full bg-warm/50 border rounded-lg px-2 py-1.5 text-sm font-mono outline-none font-semibold transition-colors
 									{row.backCalc ? 'border-accent/40 bg-accent/5' : 'border-border'}"
 									oninput={(e) => handleMassInput(row.idx, e.currentTarget.value)}
 								/>
 							</div>
 						</div>
 						<!-- Derived values -->
-						<div class="flex items-center gap-3 text-[10px] text-muted">
+						<div class="flex items-center gap-3 text-xs text-muted">
 							<span>{fmtN(row.moles)} mol</span>
 							<span>{fmtN(row.moles * 1000, 2)} mmol</span>
 							{#if row.volume !== null}
@@ -205,16 +205,16 @@
 			{#if productSpecies && productMw > 0}
 				<div class="flex items-center justify-between">
 					<div>
-						<p class="text-[10px] font-semibold text-muted uppercase tracking-wide">Theoretical Yield</p>
+						<p class="text-xs font-semibold text-muted uppercase tracking-wide">Theoretical Yield</p>
 						<p class="text-xs text-muted">{productSpecies.name} · MW {productMw.toFixed(2)}</p>
 					</div>
 					<div class="text-right">
-						<p class="text-base font-mono font-bold text-ink">{fmtN(theoMass, 3)} g</p>
-						<p class="text-[10px] text-muted">{fmtN(theoMoles)} mol</p>
+						<p class="text-lg font-mono font-bold text-ink">{fmtN(theoMass, 3)} g</p>
+						<p class="text-xs text-muted">{fmtN(theoMoles)} mol</p>
 					</div>
 				</div>
 			{:else}
-				<p class="text-[10px] text-muted">Add a product to the step to see theoretical yield.</p>
+				<p class="text-xs text-muted">Add a product to the step to see theoretical yield.</p>
 			{/if}
 		</div>
 	</div>

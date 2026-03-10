@@ -30,7 +30,7 @@ export interface Page {
 export interface Block {
 	id: string;
 	page_id: string;
-	type: 'text' | 'image' | 'molecule' | 'chat_response' | 'document' | 'data';
+	type: 'text' | 'image' | 'molecule' | 'chat_response' | 'document' | 'data' | 'reaction_step';
 	content: string | null;
 	image_url: string | null;
 	metadata: string | null;
@@ -117,6 +117,8 @@ export interface ChemSpecies {
 	smiles: string;
 	density?: number;    // g/mL (from reagent library)
 	stoich: number;      // stoichiometric coefficient
+	amount: number;      // practical quantity (user-entered)
+	unit: 'mol' | 'g' | 'mL';  // unit for amount
 }
 
 export interface ReactionStep {
