@@ -61,6 +61,45 @@ CREATE TABLE IF NOT EXISTS next_steps_history (
   created     TEXT DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS reagent_cache (
+  cas         TEXT PRIMARY KEY,
+  data        TEXT NOT NULL,
+  created     TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS reagent (
+  id          TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL REFERENCES notebook(id) ON DELETE CASCADE,
+  cas         TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  formula     TEXT DEFAULT '',
+  molar_mass  REAL DEFAULT 0,
+  smiles      TEXT DEFAULT '',
+  density     REAL,
+  description TEXT DEFAULT '',
+  hazards     TEXT DEFAULT '[]',
+  metadata    TEXT DEFAULT '{}',
+  sort_order  INTEGER DEFAULT 0,
+  created     TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS reaction (
+  id          TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL REFERENCES notebook(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL DEFAULT 'Untitled Reaction',
+  target_smiles TEXT DEFAULT '',
+  target_name TEXT DEFAULT '',
+  target_mass REAL DEFAULT 0,
+  steps       TEXT DEFAULT '[]',
+  metadata    TEXT DEFAULT '{}',
+  sort_order  INTEGER DEFAULT 0,
+  created     TEXT DEFAULT (datetime('now')),
+  updated     TEXT DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_page_notebook ON page(notebook_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_block_page ON block(page_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_chat_notebook ON chat_message(notebook_id, created);
+CREATE INDEX IF NOT EXISTS idx_reagent_notebook ON reagent(notebook_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_reagent_cas ON reagent(cas);
+CREATE INDEX IF NOT EXISTS idx_reaction_notebook ON reaction(notebook_id, sort_order);

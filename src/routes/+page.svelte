@@ -16,6 +16,28 @@
 	let loadingSteps = $state(false);
 	let stepsError = $state('');
 
+	// Reagent search state
+	let reagentQuery = $state('');
+	let reagentResults = $state<{ notebook_id: string; notebook_title: string; notebook_emoji: string; reagents: { id: string; name: string; cas: string; formula: string }[] }[]>([]);
+	let reagentSearching = $state(false);
+	let searchTimeout: ReturnType<typeof setTimeout>;
+
+	function handleReagentSearch() {
+		clearTimeout(searchTimeout);
+		if (!reagentQuery.trim()) { reagentResults = []; return; }
+		searchTimeout = setTimeout(async () => {
+			reagentSearching = true;
+			try {
+				const res = await fetch(`/api/reagents/search?q=${encodeURIComponent(reagentQuery.trim())}`);
+				if (res.ok) {
+					const data = await res.json();
+					reagentResults = data.groups || [];
+				}
+			} catch { /* ignore */ }
+			reagentSearching = false;
+		}, 300);
+	}
+
 	function getGreeting(): string {
 		const hour = new Date().getHours();
 		if (hour < 5) return 'Burning the midnight oil';
@@ -121,6 +143,51 @@
 			</button>
 		</div>
 	</header>
+
+	<!-- Reagent search -->
+	<div class="mb-5">
+		<div class="relative">
+			<input
+				type="text"
+				bind:value={reagentQuery}
+				oninput={handleReagentSearch}
+				placeholder="Search reagents across notebooks..."
+				class="w-full bg-warm/50 border border-border rounded-xl px-3 py-2.5 pl-9 text-sm
+					   outline-none placeholder:text-muted/40 focus:border-accent transition-colors"
+			/>
+			<svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+				<circle cx="9" cy="9" r="5.5" /><path d="M13 13L17 17" />
+			</svg>
+			{#if reagentSearching}
+				<div class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+			{/if}
+		</div>
+
+		{#if reagentResults.length > 0}
+			<div class="mt-2 space-y-2">
+				{#each reagentResults as group}
+					<div class="rounded-lg border border-border bg-card/50 overflow-hidden">
+						<button
+							class="w-full flex items-center gap-2 px-3 py-2 bg-warm/20 hover:bg-warm/40 transition-colors text-left"
+							onclick={() => openNotebook(group.notebook_id)}
+						>
+							<span class="text-sm">{group.notebook_emoji}</span>
+							<span class="text-xs font-medium text-ink">{group.notebook_title}</span>
+						</button>
+						{#each group.reagents as r}
+							<div class="flex items-center gap-3 px-3 py-1.5 border-t border-border/50">
+								<span class="text-xs text-ink flex-1 truncate">{r.name}</span>
+								<span class="text-[10px] font-mono text-muted">{r.cas}</span>
+								<span class="text-[10px] text-muted">{r.formula}</span>
+							</div>
+						{/each}
+					</div>
+				{/each}
+			</div>
+		{:else if reagentQuery.trim() && !reagentSearching}
+			<p class="text-xs text-muted/60 mt-2 text-center">No reagents found</p>
+		{/if}
+	</div>
 
 	<!-- Next steps section (for tracked notebooks) -->
 	{#if loadingSteps}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import type { PageData } from './$types';
-	import type { Block, ChatMessage, Page, Notebook } from '$lib/db';
+	import type { Block, ChatMessage, Page, Notebook, Reagent, Reaction } from '$lib/db';
 	import { generateId } from '$lib/db';
 	import { compressImage } from '$lib/image';
 	import ActionBar from '$lib/components/ActionBar.svelte';
@@ -12,6 +12,7 @@
 	import MoleculeInput from '$lib/components/MoleculeInput.svelte';
 	import PageTabs from '$lib/components/PageTabs.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
+	import ReagentLibrary from '$lib/components/ReagentLibrary.svelte';
 	import { fly } from 'svelte/transition';
 
 	let { data }: { data: PageData } = $props();
@@ -22,7 +23,10 @@
 	let blocks = $state<Block[]>([]);
 	let currentPageId = $state('');
 	let chatMessages = $state<ChatMessage[]>([]);
+	let reagents = $state<Reagent[]>([]);
+	let reactions = $state<Reaction[]>([]);
 	let editModalOpen = $state(false);
+	let libraryOpen = $state(false);
 
 	// Sync from server data on load
 	$effect(() => {
@@ -31,6 +35,8 @@
 		blocks = data.blocks;
 		currentPageId = data.currentPageId;
 		chatMessages = data.chatMessages;
+		reagents = data.reagents;
+		reactions = data.reactions;
 	});
 	let chatOpen = $state(false);
 	let moleculeInputOpen = $state(false);
@@ -853,7 +859,9 @@
 		onaddtable={() => (tableMode = true)}
 		ondraw={() => (drawingMode = true)}
 		ontoggleChat={() => (chatOpen = !chatOpen)}
+		onopenlibrary={() => (libraryOpen = !libraryOpen)}
 		{chatOpen}
+		{libraryOpen}
 	/>
 </div>
 
@@ -900,6 +908,17 @@
 	{notebook}
 	onclose={() => (editModalOpen = false)}
 	onsave={saveNotebookEdit}
+/>
+
+<!-- Reagent library -->
+<ReagentLibrary
+	open={libraryOpen}
+	onclose={() => (libraryOpen = false)}
+	notebookId={data.notebook.id}
+	{reagents}
+	{reactions}
+	onreagentschange={(r) => (reagents = r)}
+	onreactionschange={(r) => (reactions = r)}
 />
 
 <!-- Scanning overlay -->

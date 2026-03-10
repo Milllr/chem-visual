@@ -9,10 +9,12 @@
 		onaddtable: () => void;
 		ondraw: () => void;
 		ontoggleChat: () => void;
+		onopenlibrary: () => void;
 		chatOpen?: boolean;
+		libraryOpen?: boolean;
 	}
 
-	let { onaddtext, onuploadimage, onuploaddocument, onuploaddata, onscannotes, onaddmolecule, onaddtable, ondraw, ontoggleChat, chatOpen = false }: Props = $props();
+	let { onaddtext, onuploadimage, onuploaddocument, onuploaddata, onscannotes, onaddmolecule, onaddtable, ondraw, ontoggleChat, onopenlibrary, chatOpen = false, libraryOpen = false }: Props = $props();
 	let showUploadMenu = $state(false);
 </script>
 
@@ -103,6 +105,25 @@
 				<line x1="12.5" y1="7" x2="12.5" y2="17" />
 			</svg>
 			<span class="text-[10px] text-muted">Table</span>
+		</button>
+
+		<!-- Library -->
+		<button
+			class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md
+				   transition-colors min-w-[44px]"
+			class:bg-accent={libraryOpen}
+			class:text-cream={libraryOpen}
+			class:active:bg-warm={!libraryOpen}
+			onclick={() => { showUploadMenu = false; onopenlibrary(); }}
+		>
+			<svg class="w-5 h-5" class:text-cream={libraryOpen} class:text-muted={!libraryOpen} viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M7 3 C7 3 5 5 5 8 C5 11 7 13 7 13" />
+				<path d="M13 3 C13 3 15 5 15 8 C15 11 13 13 13 13" />
+				<path d="M7 13 L7 16 L13 16 L13 13" />
+				<path d="M10 3 L10 8" />
+				<circle cx="10" cy="10" r="1.5" fill="currentColor" />
+			</svg>
+			<span class="text-[10px]" class:text-muted={!libraryOpen}>Library</span>
 		</button>
 
 		<!-- Draw -->

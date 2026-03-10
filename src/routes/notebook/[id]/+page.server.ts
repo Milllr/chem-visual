@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import type { Notebook, Page, Block, ChatMessage } from '$lib/db';
+import type { Notebook, Page, Block, ChatMessage, Reagent, Reaction } from '$lib/db';
 
 export const load: PageServerLoad = async ({ params, platform }) => {
 	const db = platform?.env?.DB;
@@ -41,11 +41,25 @@ export const load: PageServerLoad = async ({ params, platform }) => {
 		.bind(params.id)
 		.all<ChatMessage>();
 
+	// Load reagents
+	const { results: reagentResults } = await db
+		.prepare('SELECT * FROM reagent WHERE notebook_id = ? ORDER BY sort_order ASC')
+		.bind(params.id)
+		.all<Reagent>();
+
+	// Load reactions
+	const { results: reactionResults } = await db
+		.prepare('SELECT * FROM reaction WHERE notebook_id = ? ORDER BY sort_order ASC')
+		.bind(params.id)
+		.all<Reaction>();
+
 	return {
 		notebook,
 		pages: pageList,
 		blocks,
 		currentPageId: firstPageId || '',
-		chatMessages: chatMessages || []
+		chatMessages: chatMessages || [],
+		reagents: reagentResults || [],
+		reactions: reactionResults || []
 	};
 };

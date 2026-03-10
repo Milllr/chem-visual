@@ -47,6 +47,75 @@ export interface ChatMessage {
 	created: string;
 }
 
+export interface Reagent {
+	id: string;
+	notebook_id: string;
+	cas: string;
+	name: string;
+	formula: string;
+	molar_mass: number;
+	smiles: string;
+	density: number | null;
+	description: string;
+	hazards: string; // JSON array of GHS codes
+	metadata: string; // JSON object with extra data
+	sort_order: number;
+	created: string;
+}
+
+export interface ReagentCacheEntry {
+	cas: string;
+	data: string; // JSON array of CasCandidate[]
+	created: string;
+}
+
+export interface CasCandidate {
+	cid: number;
+	cas: string;
+	name: string;
+	iupac_name: string;
+	formula: string;
+	molar_mass: number;
+	smiles: string;
+	density: number | null;
+	description: string;
+	synonyms: string[];
+	hazards: GhsHazard[];
+	source: 'pubchem' | 'ai';
+	confidence?: string;
+}
+
+export interface GhsHazard {
+	code: string;
+	statement: string;
+	pictogram: string; // GHS pictogram identifier e.g. 'GHS02' (flame)
+}
+
+export interface Reaction {
+	id: string;
+	notebook_id: string;
+	name: string;
+	target_smiles: string;
+	target_name: string;
+	target_mass: number;
+	steps: string; // JSON array of ReactionStep[]
+	metadata: string;
+	sort_order: number;
+	created: string;
+	updated: string;
+}
+
+export interface ReactionStep {
+	id: string;
+	reagent_ids: string[];
+	stoich_coefficients: number[];
+	roles: string[]; // 'reactant' | 'catalyst' | 'solvent' | 'product'
+	product_reagent_id?: string;
+	product_stoich?: number;
+	conditions: string; // e.g. "reflux, 2h, 80°C"
+	notes: string;
+}
+
 export const NOTEBOOK_COLORS = [
 	'#C4A882', // kraft
 	'#8BA88C', // sage
