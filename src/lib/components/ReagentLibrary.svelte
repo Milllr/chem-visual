@@ -4,6 +4,7 @@
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 	import CasSearch from './CasSearch.svelte';
 	import ReactionFlow from './ReactionFlow.svelte';
+	import LabTools from './LabTools.svelte';
 	import { fly } from 'svelte/transition';
 
 	interface Props {
@@ -14,11 +15,12 @@
 		reactions: Reaction[];
 		onreagentschange: (reagents: Reagent[]) => void;
 		onreactionschange: (reactions: Reaction[]) => void;
+		oninsertblock: (type: string, content: string, metadata: Record<string, any>) => void;
 	}
 
-	let { open, onclose, notebookId, reagents, reactions, onreagentschange, onreactionschange }: Props = $props();
+	let { open, onclose, notebookId, reagents, reactions, onreagentschange, onreactionschange, oninsertblock }: Props = $props();
 
-	let tab = $state<'reagents' | 'reactions'>('reagents');
+	let tab = $state<'reagents' | 'reactions' | 'tools'>('reagents');
 	let casSearchOpen = $state(false);
 	let selectedReaction = $state<Reaction | null>(null);
 	let expandedReagent = $state<string | null>(null);
@@ -159,6 +161,16 @@
 				>
 					Reactions ({reactions.length})
 				</button>
+				<button
+					class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px"
+					class:border-accent={tab === 'tools'}
+					class:text-ink={tab === 'tools'}
+					class:border-transparent={tab !== 'tools'}
+					class:text-muted={tab !== 'tools'}
+					onclick={() => (tab = 'tools')}
+				>
+					Tools
+				</button>
 			</div>
 		</header>
 
@@ -239,12 +251,31 @@
 										{/if}
 									</div>
 
-									<button
-										class="text-xs text-red-ink hover:bg-red-ink/10 px-2 py-1 rounded-lg transition-colors"
-										onclick={() => deleteReagent(reagent.id)}
-									>
-										Remove from library
-									</button>
+									<div class="flex items-center gap-2 pt-1">
+										{#if reagent.smiles}
+											<button
+												class="text-xs text-accent hover:bg-accent/10 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
+												onclick={() => {
+													oninsertblock('molecule', reagent.smiles, {
+														formula: reagent.name,
+														smiles: reagent.smiles,
+														cas: reagent.cas,
+														molar_mass: reagent.molar_mass
+													});
+													onclose();
+												}}
+											>
+												<svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3V13M3 8H13" /></svg>
+												Insert to page
+											</button>
+										{/if}
+										<button
+											class="text-xs text-red-ink hover:bg-red-ink/10 px-2 py-1 rounded-lg transition-colors"
+											onclick={() => deleteReagent(reagent.id)}
+										>
+											Remove
+										</button>
+									</div>
 								</div>
 							{/if}
 						</div>
@@ -260,7 +291,7 @@
 					</button>
 				</div>
 
-			{:else}
+			{:else if tab === 'reactions'}
 				<!-- Reactions list -->
 				<div class="p-4 space-y-3">
 					{#if reactions.length === 0}
@@ -293,6 +324,9 @@
 						+ New Reaction
 					</button>
 				</div>
+
+			{:else if tab === 'tools'}
+				<LabTools />
 			{/if}
 		</main>
 	</div>
@@ -307,11 +341,12 @@
 
 <!-- Reaction flow editor -->
 {#if selectedReaction}
+	{@const reactionId = selectedReaction.id}
 	<ReactionFlow
 		reaction={selectedReaction}
 		{reagents}
 		onupdate={(r) => { updateReaction(r); selectedReaction = r; }}
-		ondelete={() => deleteReaction(selectedReaction!.id)}
+		ondelete={() => { selectedReaction = null; deleteReaction(reactionId); }}
 		onclose={() => (selectedReaction = null)}
 	/>
 {/if}

@@ -919,6 +919,22 @@
 	{reactions}
 	onreagentschange={(r) => (reagents = r)}
 	onreactionschange={(r) => (reactions = r)}
+	oninsertblock={async (type, content, metadata) => {
+		const res = await fetch('/api/blocks', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				page_id: currentPageId,
+				type,
+				content,
+				metadata
+			})
+		});
+		if (res.ok) {
+			const block = await res.json();
+			blocks = [...blocks, block];
+		}
+	}}
 />
 
 <!-- Scanning overlay -->

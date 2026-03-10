@@ -31,6 +31,8 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		.first<{ max_order: number }>();
 
 	const sortOrder = (last?.max_order ?? -1) + 1;
+	const stepsStr = typeof steps === 'string' ? steps : JSON.stringify(steps || []);
+	const metaStr = typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {});
 
 	await db
 		.prepare(
@@ -40,7 +42,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			id, notebook_id,
 			name || 'Untitled Reaction',
 			target_smiles || '', target_name || '', target_mass || 0,
-			JSON.stringify(steps || []), JSON.stringify(metadata || {}),
+			stepsStr, metaStr,
 			sortOrder
 		)
 		.run();

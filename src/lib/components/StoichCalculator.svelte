@@ -23,11 +23,11 @@
 
 	// Build reagent calculation rows
 	let calcRows = $derived(
-		step.reagent_ids.map((rid, i) => {
+		(step.reagent_ids || []).map((rid, i) => {
 			const r = reagents.find(rg => rg.id === rid);
 			if (!r) return null;
-			const coeff = step.stoich_coefficients[i] || 1;
-			const role = step.roles[i] || 'reactant';
+			const coeff = (step.stoich_coefficients || [])[i] || 1;
+			const role = (step.roles || [])[i] || 'reactant';
 			const molesNeeded = productMw > 0 ? (coeff / productCoeff) * productMoles : 0;
 			const massNeeded = molesNeeded * r.molar_mass;
 			const volumeNeeded = r.density ? massNeeded / r.density : null;

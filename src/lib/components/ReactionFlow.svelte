@@ -15,12 +15,35 @@
 
 	let { reaction, reagents, onupdate, ondelete, onclose }: Props = $props();
 
-	let steps = $state<ReactionStep[]>(
-		(() => { try { return JSON.parse(reaction.steps || '[]'); } catch { return []; } })()
-	);
-	let reactionName = $state(reaction.name);
+	function parseSteps(raw: string | undefined | null): ReactionStep[] {
+		if (!raw) return [];
+		try {
+			const parsed = JSON.parse(raw);
+			if (!Array.isArray(parsed)) return [];
+			// Ensure each step has required arrays
+			return parsed.map((s: any) => ({
+				id: s.id || generateId(),
+				reagent_ids: Array.isArray(s.reagent_ids) ? s.reagent_ids : [],
+				stoich_coefficients: Array.isArray(s.stoich_coefficients) ? s.stoich_coefficients : [],
+				roles: Array.isArray(s.roles) ? s.roles : [],
+				product_reagent_id: s.product_reagent_id || undefined,
+				product_stoich: s.product_stoich || 1,
+				conditions: s.conditions || '',
+				notes: s.notes || ''
+			}));
+		} catch { return []; }
+	}
+
+	let steps = $state<ReactionStep[]>(parseSteps(reaction.steps));
+	let reactionName = $state(reaction.name || '');
 	let showAddStep = $state(false);
 	let calcStep = $state<ReactionStep | null>(null);
+
+	// Re-sync when reaction prop changes
+	$effect(() => {
+		steps = parseSteps(reaction.steps);
+		reactionName = reaction.name || '';
+	});
 
 	// New step form state
 	let newReagentIds = $state<string[]>([]);
@@ -58,9 +81,9 @@
 		if (newReagentIds.length === 0) return;
 		const step: ReactionStep = {
 			id: generateId(),
-			reagent_ids: newReagentIds,
-			stoich_coefficients: newCoeffs,
-			roles: newRoles,
+			reagent_ids: [...newReagentIds],
+			stoich_coefficients: [...newCoeffs],
+			roles: [...newRoles],
 			product_reagent_id: newProductId || undefined,
 			product_stoich: newProductCoeff,
 			conditions: newConditions,
@@ -69,17 +92,27 @@
 		steps = [...steps, step];
 		showAddStep = false;
 		resetNewStep();
-		saveReaction();
+		persistSteps();
 	}
 
 	function deleteStep(idx: number) {
 		steps = steps.filter((_, i) => i !== idx);
-		saveReaction();
+		persistSteps();
 	}
 
-	async function saveReaction() {
-		const updated = { ...reaction, name: reactionName, steps: JSON.stringify(steps) };
+	function persistSteps() {
+		const updated: Reaction = {
+			...reaction,
+			name: reactionName,
+			steps: JSON.stringify(steps)
+		};
 		onupdate(updated);
+	}
+
+	function handleNameBlur() {
+		if (reactionName !== reaction.name) {
+			persistSteps();
+		}
 	}
 
 	function getReagent(id: string): Reagent | undefined {
@@ -103,7 +136,7 @@
 			<input
 				type="text"
 				bind:value={reactionName}
-				onblur={saveReaction}
+				onblur={handleNameBlur}
 				class="flex-1 bg-transparent text-sm font-heading text-ink outline-none placeholder:text-muted/40 min-w-0"
 				placeholder="Reaction name..."
 			/>
@@ -154,14 +187,14 @@
 
 								<!-- Reagents (inputs) -->
 								<div class="px-3 py-2 space-y-1.5">
-									{#each step.reagent_ids as rid, j}
+									{#each step.reagent_ids || [] as rid, j}
 										{@const r = getReagent(rid)}
 										{#if r}
 											<div class="flex items-center gap-2">
-												<span class="text-[10px] font-mono text-muted w-3 text-right">{step.stoich_coefficients[j] || 1}×</span>
+												<span class="text-[10px] font-mono text-muted w-3 text-right">{(step.stoich_coefficients || [])[j] || 1}×</span>
 												<div class="flex-1 min-w-0">
 													<p class="text-xs font-medium text-ink truncate">{r.name}</p>
-													<p class="text-[10px] text-muted">{r.formula} · {step.roles[j] || 'reactant'}</p>
+													<p class="text-[10px] text-muted">{r.formula} · {(step.roles || [])[j] || 'reactant'}</p>
 												</div>
 												{#if r.smiles}
 													<div class="w-8 h-8 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
