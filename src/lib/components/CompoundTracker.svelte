@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Compound, Reaction, Reagent } from '$lib/db';
 	import { NMR_NUCLEI } from '$lib/db';
+	import { calcMW } from '$lib/chem';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 	import { fly } from 'svelte/transition';
 
@@ -16,24 +17,19 @@
 
 	let expandedId = $state<string | null>(null);
 	let showAddForm = $state(false);
-	let addNucleusOpen = $state<string | null>(null); // compound id showing nucleus picker
+	let addNucleusOpen = $state<string | null>(null);
 
-	// New compound form
+	// New compound form — only name, formula, and optional reaction link
 	let newName = $state('');
 	let newFormula = $state('');
-	let newMw = $state(0);
-	let newSmiles = $state('');
 	let newReactionId = $state('');
+	let creatingCompound = $state(false);
+
+	// Auto-calculated MW from formula
+	let newMwCalc = $derived(calcMW(newFormula));
 
 	function parseNmr(data: string): Record<string, { have: boolean; notes: string }> {
 		try { return JSON.parse(data) || {}; } catch { return {}; }
-	}
-
-	function yieldBadge(pct: number): { text: string; cls: string } {
-		if (pct === 0) return { text: '—', cls: 'text-muted/40' };
-		if (pct >= 80) return { text: `${pct.toFixed(0)}%`, cls: 'text-green-700 bg-green-700/8' };
-		if (pct >= 50) return { text: `${pct.toFixed(0)}%`, cls: 'text-amber-600 bg-amber-600/8' };
-		return { text: `${pct.toFixed(0)}%`, cls: 'text-red-ink bg-red-ink/8' };
 	}
 
 	function nmrSummary(data: string): string[] {
@@ -47,6 +43,20 @@
 		if (!id) return '';
 		const r = reactions.find(rx => rx.id === id);
 		return r?.name || 'Untitled Reaction';
+	}
+
+	// Get yield from the linked reaction (not from compound anymore)
+	function getLinkedYield(compound: Compound): number {
+		if (!compound.reaction_id) return 0;
+		const rx = reactions.find(r => r.id === compound.reaction_id);
+		return rx?.yield_percent || 0;
+	}
+
+	function yieldBadge(pct: number): { text: string; cls: string } {
+		if (pct === 0) return { text: '—', cls: 'text-muted/40' };
+		if (pct >= 80) return { text: `${pct.toFixed(0)}%`, cls: 'text-green-700 bg-green-700/8' };
+		if (pct >= 50) return { text: `${pct.toFixed(0)}%`, cls: 'text-amber-600 bg-amber-600/8' };
+		return { text: `${pct.toFixed(0)}%`, cls: 'text-red-ink bg-red-ink/8' };
 	}
 
 	// Debounced update
@@ -64,6 +74,26 @@
 	}
 
 	async function createCompound() {
+		if (creatingCompound) return;
+		creatingCompound = true;
+
+		const mw = newMwCalc;
+		// Try to resolve SMILES from compound name
+		let smiles = '';
+		if (newName.trim()) {
+			try {
+				const res = await fetch('/api/smiles', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ input: newName.trim() })
+				});
+				if (res.ok) {
+					const data = await res.json();
+					if (data.smiles) smiles = data.smiles;
+				}
+			} catch { /* SMILES resolution is best-effort */ }
+		}
+
 		const defaultNmr = Object.fromEntries(
 			['1H', '13C'].map(n => [n, { have: false, notes: '' }])
 		);
@@ -74,8 +104,8 @@
 				notebook_id: notebookId,
 				name: newName || 'Untitled Compound',
 				formula: newFormula,
-				molar_mass: newMw,
-				smiles: newSmiles,
+				molar_mass: mw,
+				smiles,
 				reaction_id: newReactionId || null,
 				nmr_data: JSON.stringify(defaultNmr)
 			})
@@ -85,8 +115,9 @@
 			oncompoundschange([...compounds, compound]);
 			expandedId = compound.id;
 			showAddForm = false;
-			newName = ''; newFormula = ''; newMw = 0; newSmiles = ''; newReactionId = '';
+			newName = ''; newFormula = ''; newReactionId = '';
 		}
+		creatingCompound = false;
 	}
 
 	async function deleteCompound(id: string) {
@@ -126,16 +157,6 @@
 		delete nmr[nucleusId];
 		saveCompound({ ...compound, nmr_data: JSON.stringify(nmr) });
 	}
-
-	function recalcYield(compound: Compound, actualYield: number, theoreticalYield: number) {
-		const pct = theoreticalYield > 0 ? (actualYield / theoreticalYield) * 100 : 0;
-		saveCompound({
-			...compound,
-			actual_yield: actualYield,
-			theoretical_yield: theoreticalYield,
-			yield_percent: Math.round(pct * 10) / 10
-		});
-	}
 </script>
 
 <div class="p-4 space-y-3">
@@ -153,7 +174,8 @@
 	<!-- Compound cards -->
 	{#each compounds as compound (compound.id)}
 		{@const nmrHave = nmrSummary(compound.nmr_data)}
-		{@const yld = yieldBadge(compound.yield_percent)}
+		{@const linkedYield = getLinkedYield(compound)}
+		{@const yld = yieldBadge(linkedYield)}
 		<div
 			class="rounded-xl border border-border bg-card/50 overflow-hidden"
 			transition:fly={{ y: 10, duration: 200 }}
@@ -172,7 +194,7 @@
 					<div class="flex-1 min-w-0">
 						<div class="flex items-center gap-2">
 							<p class="text-sm font-medium text-ink truncate">{compound.name || 'Untitled'}</p>
-							{#if compound.yield_percent > 0}
+							{#if linkedYield > 0}
 								<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold {yld.cls}">{yld.text}</span>
 							{/if}
 						</div>
@@ -225,15 +247,17 @@
 								<label class="text-[10px] text-muted block mb-0.5">Formula</label>
 								<input type="text" value={compound.formula}
 									class="w-full bg-warm/50 border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-muted"
-									onchange={(e) => saveCompound({ ...compound, formula: e.currentTarget.value })} />
+									onchange={(e) => {
+										const newFormula = e.currentTarget.value;
+										const mw = calcMW(newFormula);
+										saveCompound({ ...compound, formula: newFormula, molar_mass: mw || compound.molar_mass });
+									}} />
 							</div>
 						</div>
 						<div class="grid grid-cols-2 gap-2">
 							<div>
 								<label class="text-[10px] text-muted block mb-0.5">MW (g/mol)</label>
-								<input type="number" step="any" value={compound.molar_mass}
-									class="w-full bg-warm/50 border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none focus:border-muted"
-									onchange={(e) => saveCompound({ ...compound, molar_mass: +e.currentTarget.value })} />
+								<p class="text-xs font-mono text-ink bg-warm/30 rounded-lg px-2 py-1.5">{compound.molar_mass || '—'}</p>
 							</div>
 							<div>
 								<label class="text-[10px] text-muted block mb-0.5">Reaction</label>
@@ -255,33 +279,16 @@
 								<p class="text-[10px] font-mono text-muted/80 bg-warm/30 rounded px-2 py-1 break-all">{compound.smiles}</p>
 							</div>
 						{/if}
-					</div>
-
-					<!-- Yield -->
-					<div class="rounded-lg bg-warm/30 border border-border p-3">
-						<p class="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">Yield</p>
-						<div class="grid grid-cols-3 gap-2 items-end">
-							<div>
-								<label class="text-[10px] text-muted block mb-0.5">Actual (g)</label>
-								<input type="number" step="any" value={compound.actual_yield}
-									class="w-full bg-cream border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none focus:border-muted"
-									onchange={(e) => recalcYield(compound, +e.currentTarget.value, compound.theoretical_yield)} />
-							</div>
-							<div>
-								<label class="text-[10px] text-muted block mb-0.5">Theoretical (g)</label>
-								<input type="number" step="any" value={compound.theoretical_yield}
-									class="w-full bg-cream border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none focus:border-muted"
-									onchange={(e) => recalcYield(compound, compound.actual_yield, +e.currentTarget.value)} />
-							</div>
-							<div class="text-center pb-1.5">
-								{#if compound.yield_percent > 0}
-									{@const y = yieldBadge(compound.yield_percent)}
-									<p class="text-lg font-mono font-bold {y.cls}">{y.text}</p>
-								{:else}
-									<p class="text-lg font-mono font-bold text-muted/40">—</p>
-								{/if}
-							</div>
-						</div>
+						{#if compound.reaction_id}
+							{@const rxYield = getLinkedYield(compound)}
+							{#if rxYield > 0}
+								{@const badge = yieldBadge(rxYield)}
+								<div class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-warm/30">
+									<span class="text-[10px] text-muted">Reaction yield:</span>
+									<span class="text-xs font-mono font-semibold {badge.cls}">{badge.text}</span>
+								</div>
+							{/if}
+						{/if}
 					</div>
 
 					<!-- NMR Characterization -->
@@ -477,14 +484,20 @@
 		<div class="rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2" transition:fly={{ y: 10, duration: 200 }}>
 			<p class="text-xs font-medium text-ink">Register New Compound</p>
 			<div class="grid grid-cols-2 gap-2">
-				<input type="text" bind:value={newName} placeholder="Name"
+				<input type="text" bind:value={newName} placeholder="Compound name"
 					class="bg-cream border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-muted" />
-				<input type="text" bind:value={newFormula} placeholder="Formula"
-					class="bg-cream border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-muted" />
+				<input type="text" bind:value={newFormula} placeholder="Formula (e.g. C8H10N4O2)"
+					class="bg-cream border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none focus:border-muted" />
 			</div>
 			<div class="grid grid-cols-2 gap-2">
-				<input type="number" step="any" bind:value={newMw} placeholder="MW (g/mol)"
-					class="bg-cream border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none focus:border-muted" />
+				{#if newFormula && newMwCalc > 0}
+					<div class="flex items-center gap-1.5 px-2 py-1.5 bg-warm/30 rounded-lg">
+						<span class="text-[10px] text-muted">MW:</span>
+						<span class="text-xs font-mono text-ink">{newMwCalc} g/mol</span>
+					</div>
+				{:else}
+					<div class="px-2 py-1.5 text-[10px] text-muted/40 italic">MW auto-calculated</div>
+				{/if}
 				<select bind:value={newReactionId} class="bg-cream border border-border rounded-lg px-2 py-1.5 text-xs outline-none">
 					<option value="">Link to reaction...</option>
 					{#each reactions as rx}
@@ -492,13 +505,13 @@
 					{/each}
 				</select>
 			</div>
-			<input type="text" bind:value={newSmiles} placeholder="SMILES (optional)"
-				class="w-full bg-cream border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none focus:border-muted" />
 			<div class="flex gap-2">
 				<button
-					class="flex-1 text-xs py-2 rounded-lg bg-ink text-cream font-medium hover:bg-accent transition-colors"
+					class="flex-1 text-xs py-2 rounded-lg bg-ink text-cream font-medium hover:bg-accent transition-colors
+						   disabled:opacity-40"
 					onclick={createCompound}
-				>Register</button>
+					disabled={creatingCompound || !newName.trim()}
+				>{creatingCompound ? 'Creating...' : 'Register'}</button>
 				<button
 					class="px-4 text-xs py-2 rounded-lg border border-border text-muted hover:text-ink transition-colors"
 					onclick={() => (showAddForm = false)}

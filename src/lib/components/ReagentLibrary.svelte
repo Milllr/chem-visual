@@ -97,7 +97,10 @@
 				steps: reaction.steps,
 				target_smiles: reaction.target_smiles,
 				target_name: reaction.target_name,
-				target_mass: reaction.target_mass
+				target_mass: reaction.target_mass,
+				actual_yield: reaction.actual_yield,
+				theoretical_yield: reaction.theoretical_yield,
+				yield_percent: reaction.yield_percent
 			})
 		});
 		onreactionschange(reactions.map(r => r.id === reaction.id ? reaction : r));
@@ -299,15 +302,36 @@
 
 					{#each reactions as reaction (reaction.id)}
 						{@const stepCount = (() => { try { return JSON.parse(reaction.steps || '[]').length; } catch { return 0; } })()}
-						<button
-							class="w-full text-left rounded-xl border border-border bg-card/50 p-3
-								   hover:bg-warm/20 transition-colors"
-							onclick={() => (selectedReaction = reaction)}
+						{@const yld = reaction.yield_percent || 0}
+						<div
+							class="rounded-xl border border-border bg-card/50 overflow-hidden"
 							transition:fly={{ y: 10, duration: 200 }}
 						>
-							<p class="text-sm font-medium text-ink">{reaction.name || 'Untitled Reaction'}</p>
-							<p class="text-xs text-muted mt-0.5">{stepCount} step{stepCount !== 1 ? 's' : ''}</p>
-						</button>
+							<div class="flex items-center gap-0">
+								<button
+									class="flex-1 text-left p-3 hover:bg-warm/20 transition-colors min-w-0"
+									onclick={() => (selectedReaction = reaction)}
+								>
+									<div class="flex items-center gap-2">
+										<p class="text-sm font-medium text-ink truncate">{reaction.name || 'Untitled Reaction'}</p>
+										{#if yld > 0}
+											<span class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold
+												{yld >= 80 ? 'text-green-700 bg-green-700/8' : yld >= 50 ? 'text-amber-600 bg-amber-600/8' : 'text-red-ink bg-red-ink/8'}">{yld.toFixed(0)}%</span>
+										{/if}
+									</div>
+									<p class="text-xs text-muted mt-0.5">{stepCount} step{stepCount !== 1 ? 's' : ''}</p>
+								</button>
+								<button
+									class="px-3 self-stretch flex items-center text-muted/40 hover:text-red-ink hover:bg-red-ink/5 transition-colors border-l border-border/50"
+									onclick={(e) => { e.stopPropagation(); deleteReaction(reaction.id); }}
+									title="Delete reaction"
+								>
+									<svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+										<path d="M3 4h10M6 4V3a1 1 0 011-1h2a1 1 0 011 1v1M5 4v8.5a1 1 0 001 1h4a1 1 0 001-1V4" />
+									</svg>
+								</button>
+							</div>
+						</div>
 					{/each}
 
 					<!-- Add reaction button -->

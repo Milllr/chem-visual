@@ -99,6 +99,9 @@ export interface Reaction {
 	target_name: string;
 	target_mass: number;
 	steps: string; // JSON array of ReactionStep[]
+	actual_yield: number;
+	theoretical_yield: number;
+	yield_percent: number;
 	metadata: string;
 	sort_order: number;
 	created: string;
@@ -112,6 +115,11 @@ export interface ReactionStep {
 	roles: string[]; // 'reactant' | 'catalyst' | 'solvent' | 'product'
 	product_reagent_id?: string;
 	product_stoich?: number;
+	// Custom product (when product is not in reagent library)
+	product_name?: string;
+	product_formula?: string;
+	product_mw?: number;
+	product_smiles?: string;
 	conditions: string; // e.g. "reflux, 2h, 80°C"
 	notes: string;
 }

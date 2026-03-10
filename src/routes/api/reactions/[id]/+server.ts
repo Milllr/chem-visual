@@ -15,6 +15,9 @@ export const PUT: RequestHandler = async ({ params, request, platform }) => {
 	if ('target_mass' in updates) { fields.push('target_mass = ?'); values.push(updates.target_mass); }
 	if ('steps' in updates) { fields.push('steps = ?'); values.push(typeof updates.steps === 'string' ? updates.steps : JSON.stringify(updates.steps)); }
 	if ('metadata' in updates) { fields.push('metadata = ?'); values.push(typeof updates.metadata === 'string' ? updates.metadata : JSON.stringify(updates.metadata)); }
+	if ('actual_yield' in updates) { fields.push('actual_yield = ?'); values.push(updates.actual_yield || 0); }
+	if ('theoretical_yield' in updates) { fields.push('theoretical_yield = ?'); values.push(updates.theoretical_yield || 0); }
+	if ('yield_percent' in updates) { fields.push('yield_percent = ?'); values.push(updates.yield_percent || 0); }
 
 	if (fields.length === 0) return json({ error: 'No fields to update' }, { status: 400 });
 

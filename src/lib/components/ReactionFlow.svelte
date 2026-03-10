@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Reagent, Reaction, ReactionStep } from '$lib/db';
 	import { generateId } from '$lib/db';
+	import { calcMW } from '$lib/chem';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 	import StoichCalculator from './StoichCalculator.svelte';
 	import { fly } from 'svelte/transition';
@@ -20,7 +21,6 @@
 		try {
 			const parsed = JSON.parse(raw);
 			if (!Array.isArray(parsed)) return [];
-			// Ensure each step has required arrays
 			return parsed.map((s: any) => ({
 				id: s.id || generateId(),
 				reagent_ids: Array.isArray(s.reagent_ids) ? s.reagent_ids : [],
@@ -28,6 +28,10 @@
 				roles: Array.isArray(s.roles) ? s.roles : [],
 				product_reagent_id: s.product_reagent_id || undefined,
 				product_stoich: s.product_stoich || 1,
+				product_name: s.product_name || undefined,
+				product_formula: s.product_formula || undefined,
+				product_mw: s.product_mw || undefined,
+				product_smiles: s.product_smiles || undefined,
 				conditions: s.conditions || '',
 				notes: s.notes || ''
 			}));
@@ -39,10 +43,19 @@
 	let showAddStep = $state(false);
 	let calcStep = $state<ReactionStep | null>(null);
 
+	// Yield tracking
+	let actualYield = $state(reaction.actual_yield || 0);
+	let theoreticalYield = $state(reaction.theoretical_yield || 0);
+	let yieldPercent = $derived(
+		theoreticalYield > 0 ? Math.round((actualYield / theoreticalYield) * 1000) / 10 : 0
+	);
+
 	// Re-sync when reaction prop changes
 	$effect(() => {
 		steps = parseSteps(reaction.steps);
 		reactionName = reaction.name || '';
+		actualYield = reaction.actual_yield || 0;
+		theoreticalYield = reaction.theoretical_yield || 0;
 	});
 
 	// New step form state
@@ -54,6 +67,11 @@
 	let newConditions = $state('');
 	let newNotes = $state('');
 
+	// Custom product state
+	let productMode = $state<'library' | 'custom'>('library');
+	let customProductName = $state('');
+	let customProductFormula = $state('');
+
 	function resetNewStep() {
 		newReagentIds = [];
 		newCoeffs = [];
@@ -62,6 +80,9 @@
 		newProductCoeff = 1;
 		newConditions = '';
 		newNotes = '';
+		productMode = 'library';
+		customProductName = '';
+		customProductFormula = '';
 	}
 
 	function addReagentToStep(id: string) {
@@ -84,11 +105,19 @@
 			reagent_ids: [...newReagentIds],
 			stoich_coefficients: [...newCoeffs],
 			roles: [...newRoles],
-			product_reagent_id: newProductId || undefined,
-			product_stoich: newProductCoeff,
 			conditions: newConditions,
-			notes: newNotes
+			notes: newNotes,
+			product_stoich: newProductCoeff
 		};
+
+		if (productMode === 'library' && newProductId) {
+			step.product_reagent_id = newProductId;
+		} else if (productMode === 'custom' && customProductName.trim()) {
+			step.product_name = customProductName.trim();
+			step.product_formula = customProductFormula.trim();
+			step.product_mw = calcMW(customProductFormula.trim());
+		}
+
 		steps = [...steps, step];
 		showAddStep = false;
 		resetNewStep();
@@ -109,6 +138,18 @@
 		onupdate(updated);
 	}
 
+	function persistYield() {
+		const updated: Reaction = {
+			...reaction,
+			name: reactionName,
+			steps: JSON.stringify(steps),
+			actual_yield: actualYield,
+			theoretical_yield: theoreticalYield,
+			yield_percent: yieldPercent
+		};
+		onupdate(updated);
+	}
+
 	function handleNameBlur() {
 		if (reactionName !== reaction.name) {
 			persistSteps();
@@ -117,6 +158,25 @@
 
 	function getReagent(id: string): Reagent | undefined {
 		return reagents.find(r => r.id === id);
+	}
+
+	/** Get display name for a step's product, whether from library or custom */
+	function getProductDisplay(step: ReactionStep): { name: string; formula: string; smiles?: string } | null {
+		if (step.product_reagent_id) {
+			const r = getReagent(step.product_reagent_id);
+			if (r) return { name: r.name, formula: r.formula, smiles: r.smiles };
+		}
+		if (step.product_name) {
+			return { name: step.product_name, formula: step.product_formula || '', smiles: step.product_smiles };
+		}
+		return null;
+	}
+
+	function yieldBadgeClass(pct: number): string {
+		if (pct >= 80) return 'text-green-700 bg-green-700/8';
+		if (pct >= 50) return 'text-amber-600 bg-amber-600/8';
+		if (pct > 0) return 'text-red-ink bg-red-ink/8';
+		return 'text-muted/40';
 	}
 </script>
 
@@ -214,14 +274,19 @@
 								{/if}
 
 								<!-- Product -->
-								{#if step.product_reagent_id}
-									{@const prod = getReagent(step.product_reagent_id)}
+								{#if step.product_reagent_id || step.product_name}
+									{@const prod = getProductDisplay(step)}
 									{#if prod}
 										<div class="px-3 py-2 bg-warm/20 border-t border-border">
 											<p class="text-[10px] text-muted mb-0.5">→ Product</p>
 											<div class="flex items-center gap-2">
 												<span class="text-[10px] font-mono text-muted w-3 text-right">{step.product_stoich || 1}×</span>
-												<p class="text-xs font-semibold text-ink truncate flex-1">{prod.name}</p>
+												<div class="flex-1 min-w-0">
+													<p class="text-xs font-semibold text-ink truncate">{prod.name}</p>
+													{#if prod.formula}
+														<p class="text-[10px] text-muted">{prod.formula}</p>
+													{/if}
+												</div>
 												{#if prod.smiles}
 													<div class="w-8 h-8 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
 														<MoleculeRenderer smiles={prod.smiles} width={40} height={40} />
@@ -249,6 +314,36 @@
 							{/if}
 						</div>
 					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- Yield tracking -->
+		{#if steps.length > 0}
+			<div class="px-4 pb-4">
+				<div class="rounded-xl border border-border bg-card/50 p-4">
+					<p class="text-[10px] font-semibold text-muted uppercase tracking-wide mb-3">Reaction Yield</p>
+					<div class="grid grid-cols-3 gap-3 items-end">
+						<div>
+							<label class="text-[10px] text-muted block mb-0.5">Actual (g)</label>
+							<input type="number" step="any" bind:value={actualYield}
+								class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-muted"
+								onchange={persistYield} />
+						</div>
+						<div>
+							<label class="text-[10px] text-muted block mb-0.5">Theoretical (g)</label>
+							<input type="number" step="any" bind:value={theoreticalYield}
+								class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-muted"
+								onchange={persistYield} />
+						</div>
+						<div class="text-center pb-1.5">
+							{#if yieldPercent > 0}
+								<p class="text-lg font-mono font-bold {yieldBadgeClass(yieldPercent)}">{yieldPercent.toFixed(1)}%</p>
+							{:else}
+								<p class="text-lg font-mono font-bold text-muted/40">—</p>
+							{/if}
+						</div>
+					</div>
 				</div>
 			</div>
 		{/if}
@@ -319,24 +414,58 @@
 						<!-- Product -->
 						<div>
 							<label class="text-xs font-medium text-muted mb-1.5 block">Product</label>
-							<div class="flex items-center gap-2">
+							<!-- Mode toggle -->
+							<div class="flex gap-1 mb-2">
+								<button
+									class="flex-1 text-[10px] py-1 rounded-md font-medium transition-all
+										{productMode === 'library' ? 'bg-ink text-cream' : 'bg-warm/40 text-muted hover:bg-warm'}"
+									onclick={() => (productMode = 'library')}
+								>From Library</button>
+								<button
+									class="flex-1 text-[10px] py-1 rounded-md font-medium transition-all
+										{productMode === 'custom' ? 'bg-ink text-cream' : 'bg-warm/40 text-muted hover:bg-warm'}"
+									onclick={() => (productMode = 'custom')}
+								>Custom Compound</button>
+							</div>
+
+							<div class="flex items-start gap-2">
 								<input
 									type="number"
 									min="1"
 									step="1"
 									bind:value={newProductCoeff}
-									class="w-10 bg-warm/50 border border-border rounded-lg text-xs font-mono text-center py-1.5 outline-none"
+									class="w-10 bg-warm/50 border border-border rounded-lg text-xs font-mono text-center py-1.5 outline-none mt-0.5"
 								/>
-								<span class="text-xs text-muted">×</span>
-								<select
-									bind:value={newProductId}
-									class="flex-1 bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-sm outline-none text-ink"
-								>
-									<option value="">Select product...</option>
-									{#each reagents as r}
-										<option value={r.id}>{r.name} ({r.formula})</option>
-									{/each}
-								</select>
+								<span class="text-xs text-muted mt-2">×</span>
+								{#if productMode === 'library'}
+									<select
+										bind:value={newProductId}
+										class="flex-1 bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-sm outline-none text-ink"
+									>
+										<option value="">Select product...</option>
+										{#each reagents as r}
+											<option value={r.id}>{r.name} ({r.formula})</option>
+										{/each}
+									</select>
+								{:else}
+									<div class="flex-1 space-y-1.5">
+										<input
+											type="text"
+											bind:value={customProductName}
+											placeholder="Product name"
+											class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-sm outline-none placeholder:text-muted/40"
+										/>
+										<input
+											type="text"
+											bind:value={customProductFormula}
+											placeholder="Formula (e.g. C8H10N4O2)"
+											class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none placeholder:text-muted/40"
+										/>
+										{#if customProductFormula && calcMW(customProductFormula) > 0}
+											<p class="text-[10px] text-muted">MW: {calcMW(customProductFormula)} g/mol</p>
+										{/if}
+									</div>
+								{/if}
 							</div>
 						</div>
 
