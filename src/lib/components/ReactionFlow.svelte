@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { Reagent, Reaction, ReactionStep } from '$lib/db';
+	import type { Reagent, Reaction, ReactionStep, ChemSpecies, Compound } from '$lib/db';
 	import { generateId } from '$lib/db';
-	import { calcMW } from '$lib/chem';
+	import { calcMW, formatFormula } from '$lib/chem';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 	import StoichCalculator from './StoichCalculator.svelte';
 	import { fly } from 'svelte/transition';
@@ -9,48 +9,100 @@
 	interface Props {
 		reaction: Reaction;
 		reagents: Reagent[];
+		compounds: Compound[];
 		onupdate: (reaction: Reaction) => void;
 		ondelete: () => void;
 		onclose: () => void;
 	}
 
-	let { reaction, reagents, onupdate, ondelete, onclose }: Props = $props();
+	let { reaction, reagents, compounds, onupdate, ondelete, onclose }: Props = $props();
+
+	/* ── Parse steps with backward compatibility ───────────────────── */
 
 	function parseSteps(raw: string | undefined | null): ReactionStep[] {
 		if (!raw) return [];
 		try {
 			const parsed = JSON.parse(raw);
 			if (!Array.isArray(parsed)) return [];
-			return parsed.map((s: any) => ({
-				id: s.id || generateId(),
-				reagent_ids: Array.isArray(s.reagent_ids) ? s.reagent_ids : [],
-				stoich_coefficients: Array.isArray(s.stoich_coefficients) ? s.stoich_coefficients : [],
-				roles: Array.isArray(s.roles) ? s.roles : [],
-				product_reagent_id: s.product_reagent_id || undefined,
-				product_stoich: s.product_stoich || 1,
-				product_name: s.product_name || undefined,
-				product_formula: s.product_formula || undefined,
-				product_mw: s.product_mw || undefined,
-				product_smiles: s.product_smiles || undefined,
-				conditions: s.conditions || '',
-				notes: s.notes || ''
-			}));
+			return parsed.map((s: any) => {
+				if (Array.isArray(s.reactants)) {
+					return {
+						id: s.id || generateId(),
+						reactants: s.reactants || [],
+						products: s.products || [],
+						conditions_above: s.conditions_above || '',
+						conditions_below: s.conditions_below || '',
+						notes: s.notes || ''
+					};
+				}
+				return migrateOldStep(s);
+			});
 		} catch { return []; }
 	}
+
+	function migrateOldStep(s: any): ReactionStep {
+		const reactants: ChemSpecies[] = [];
+		const condParts: string[] = [];
+		const ids: string[] = Array.isArray(s.reagent_ids) ? s.reagent_ids : [];
+		const coeffs: number[] = Array.isArray(s.stoich_coefficients) ? s.stoich_coefficients : [];
+		const roles: string[] = Array.isArray(s.roles) ? s.roles : [];
+
+		for (let i = 0; i < ids.length; i++) {
+			const r = reagents.find(rg => rg.id === ids[i]);
+			const role = roles[i] || 'reactant';
+			if (role === 'catalyst' || role === 'solvent') {
+				condParts.push(r?.name || ids[i]);
+				continue;
+			}
+			if (r) {
+				reactants.push({
+					source: 'reagent', ref_id: r.id,
+					name: r.name, formula: r.formula, mw: r.molar_mass,
+					smiles: r.smiles, density: r.density || undefined,
+					stoich: coeffs[i] || 1
+				});
+			}
+		}
+
+		const products: ChemSpecies[] = [];
+		if (s.product_reagent_id) {
+			const p = reagents.find(rg => rg.id === s.product_reagent_id);
+			if (p) products.push({
+				source: 'reagent', ref_id: p.id,
+				name: p.name, formula: p.formula, mw: p.molar_mass,
+				smiles: p.smiles, density: p.density || undefined,
+				stoich: s.product_stoich || 1
+			});
+		} else if (s.product_name) {
+			products.push({
+				source: 'custom',
+				name: s.product_name, formula: s.product_formula || '',
+				mw: s.product_mw || calcMW(s.product_formula || ''),
+				smiles: s.product_smiles || '', stoich: s.product_stoich || 1
+			});
+		}
+
+		return {
+			id: s.id || generateId(), reactants, products,
+			conditions_above: condParts.join(', '),
+			conditions_below: s.conditions || '',
+			notes: s.notes || ''
+		};
+	}
+
+	/* ── Reactive state ────────────────────────────────────────────── */
 
 	let steps = $state<ReactionStep[]>(parseSteps(reaction.steps));
 	let reactionName = $state(reaction.name || '');
 	let showAddStep = $state(false);
 	let calcStep = $state<ReactionStep | null>(null);
 
-	// Yield tracking
 	let actualYield = $state(reaction.actual_yield || 0);
 	let theoreticalYield = $state(reaction.theoretical_yield || 0);
 	let yieldPercent = $derived(
 		theoreticalYield > 0 ? Math.round((actualYield / theoreticalYield) * 1000) / 10 : 0
 	);
 
-	// Re-sync when reaction prop changes
 	$effect(() => {
 		steps = parseSteps(reaction.steps);
 		reactionName = reaction.name || '';
@@ -58,69 +110,84 @@
 		theoreticalYield = reaction.theoretical_yield || 0;
 	});
 
-	// New step form state
-	let newReagentIds = $state<string[]>([]);
-	let newCoeffs = $state<number[]>([]);
-	let newRoles = $state<string[]>([]);
-	let newProductId = $state('');
-	let newProductCoeff = $state(1);
-	let newConditions = $state('');
+	/* ── New step form state ───────────────────────────────────────── */
+
+	let newReactants = $state<ChemSpecies[]>([]);
+	let newProducts = $state<ChemSpecies[]>([]);
+	let newCondAbove = $state('');
+	let newCondBelow = $state('');
 	let newNotes = $state('');
 
-	// Custom product state
-	let productMode = $state<'library' | 'custom'>('library');
-	let customProductName = $state('');
-	let customProductFormula = $state('');
+	let pickerTarget = $state<'reactant' | 'product' | null>(null);
+	let pickerSource = $state<'reagent' | 'compound' | 'custom'>('reagent');
+	let customName = $state('');
+	let customFormula = $state('');
 
-	function resetNewStep() {
-		newReagentIds = [];
-		newCoeffs = [];
-		newRoles = [];
-		newProductId = '';
-		newProductCoeff = 1;
-		newConditions = '';
-		newNotes = '';
-		productMode = 'library';
-		customProductName = '';
-		customProductFormula = '';
+	function resetForm() {
+		newReactants = []; newProducts = [];
+		newCondAbove = ''; newCondBelow = ''; newNotes = '';
+		pickerTarget = null; customName = ''; customFormula = '';
 	}
 
-	function addReagentToStep(id: string) {
-		if (newReagentIds.includes(id)) return;
-		newReagentIds = [...newReagentIds, id];
-		newCoeffs = [...newCoeffs, 1];
-		newRoles = [...newRoles, 'reactant'];
+	/* ── Species manipulation ──────────────────────────────────────── */
+
+	function addSpecies(species: ChemSpecies) {
+		if (pickerTarget === 'reactant') newReactants = [...newReactants, species];
+		else if (pickerTarget === 'product') newProducts = [...newProducts, species];
+		pickerTarget = null;
+		customName = ''; customFormula = '';
 	}
 
-	function removeReagentFromStep(idx: number) {
-		newReagentIds = newReagentIds.filter((_, i) => i !== idx);
-		newCoeffs = newCoeffs.filter((_, i) => i !== idx);
-		newRoles = newRoles.filter((_, i) => i !== idx);
+	function addReagentAsSpecies(r: Reagent) {
+		addSpecies({
+			source: 'reagent', ref_id: r.id,
+			name: r.name, formula: r.formula, mw: r.molar_mass,
+			smiles: r.smiles, density: r.density || undefined, stoich: 1
+		});
 	}
+
+	function addCompoundAsSpecies(c: Compound) {
+		addSpecies({
+			source: 'compound', ref_id: c.id,
+			name: c.name, formula: c.formula, mw: c.molar_mass,
+			smiles: c.smiles, stoich: 1
+		});
+	}
+
+	function addCustomSpecies() {
+		if (!customName.trim()) return;
+		const mw = calcMW(customFormula.trim());
+		addSpecies({
+			source: 'custom',
+			name: customName.trim(), formula: customFormula.trim(),
+			mw, smiles: '', stoich: 1
+		});
+	}
+
+	function removeSpecies(target: 'reactant' | 'product', idx: number) {
+		if (target === 'reactant') newReactants = newReactants.filter((_, i) => i !== idx);
+		else newProducts = newProducts.filter((_, i) => i !== idx);
+	}
+
+	function updateStoich(target: 'reactant' | 'product', idx: number, val: number) {
+		if (target === 'reactant') newReactants = newReactants.map((s, i) => i === idx ? { ...s, stoich: val } : s);
+		else newProducts = newProducts.map((s, i) => i === idx ? { ...s, stoich: val } : s);
+	}
+
+	/* ── Step CRUD ─────────────────────────────────────────────────── */
 
 	function saveStep() {
-		if (newReagentIds.length === 0) return;
-		const step: ReactionStep = {
+		if (newReactants.length === 0) return;
+		steps = [...steps, {
 			id: generateId(),
-			reagent_ids: [...newReagentIds],
-			stoich_coefficients: [...newCoeffs],
-			roles: [...newRoles],
-			conditions: newConditions,
-			notes: newNotes,
-			product_stoich: newProductCoeff
-		};
-
-		if (productMode === 'library' && newProductId) {
-			step.product_reagent_id = newProductId;
-		} else if (productMode === 'custom' && customProductName.trim()) {
-			step.product_name = customProductName.trim();
-			step.product_formula = customProductFormula.trim();
-			step.product_mw = calcMW(customProductFormula.trim());
-		}
-
-		steps = [...steps, step];
+			reactants: [...newReactants],
+			products: [...newProducts],
+			conditions_above: newCondAbove,
+			conditions_below: newCondBelow,
+			notes: newNotes
+		}];
 		showAddStep = false;
-		resetNewStep();
+		resetForm();
 		persistSteps();
 	}
 
@@ -129,47 +196,40 @@
 		persistSteps();
 	}
 
+	function updateStepField(idx: number, field: 'conditions_above' | 'conditions_below' | 'notes', value: string) {
+		steps = steps.map((s, i) => i === idx ? { ...s, [field]: value } : s);
+		persistSteps();
+	}
+
+	/* ── Persistence ───────────────────────────────────────────────── */
+
 	function persistSteps() {
-		const updated: Reaction = {
-			...reaction,
-			name: reactionName,
-			steps: JSON.stringify(steps)
-		};
-		onupdate(updated);
+		onupdate({ ...reaction, name: reactionName, steps: JSON.stringify(steps) });
 	}
 
 	function persistYield() {
-		const updated: Reaction = {
-			...reaction,
-			name: reactionName,
-			steps: JSON.stringify(steps),
-			actual_yield: actualYield,
-			theoretical_yield: theoreticalYield,
-			yield_percent: yieldPercent
-		};
-		onupdate(updated);
+		onupdate({
+			...reaction, name: reactionName, steps: JSON.stringify(steps),
+			actual_yield: actualYield, theoretical_yield: theoreticalYield, yield_percent: yieldPercent
+		});
 	}
 
 	function handleNameBlur() {
-		if (reactionName !== reaction.name) {
-			persistSteps();
-		}
+		if (reactionName !== reaction.name) persistSteps();
 	}
 
-	function getReagent(id: string): Reagent | undefined {
-		return reagents.find(r => r.id === id);
-	}
+	/* ── Helpers ────────────────────────────────────────────────────── */
 
-	/** Get display name for a step's product, whether from library or custom */
-	function getProductDisplay(step: ReactionStep): { name: string; formula: string; smiles?: string } | null {
-		if (step.product_reagent_id) {
-			const r = getReagent(step.product_reagent_id);
-			if (r) return { name: r.name, formula: r.formula, smiles: r.smiles };
+	function resolveSpecies(s: ChemSpecies): ChemSpecies {
+		if (s.source === 'reagent' && s.ref_id) {
+			const r = reagents.find(rg => rg.id === s.ref_id);
+			if (r) return { ...s, name: r.name, formula: r.formula, mw: r.molar_mass, smiles: r.smiles, density: r.density || undefined };
 		}
-		if (step.product_name) {
-			return { name: step.product_name, formula: step.product_formula || '', smiles: step.product_smiles };
+		if (s.source === 'compound' && s.ref_id) {
+			const c = compounds.find(cp => cp.id === s.ref_id);
+			if (c) return { ...s, name: c.name, formula: c.formula, mw: c.molar_mass, smiles: c.smiles };
 		}
-		return null;
+		return s;
 	}
 
 	function yieldBadgeClass(pct: number): string {
@@ -178,7 +238,102 @@
 		if (pct > 0) return 'text-red-ink bg-red-ink/8';
 		return 'text-muted/40';
 	}
+
+	function sourceBadge(source: string): { label: string; cls: string } {
+		if (source === 'reagent') return { label: 'reagent', cls: 'text-blue-ink/60 bg-blue-ink/8' };
+		if (source === 'compound') return { label: 'compound', cls: 'text-green-700/60 bg-green-700/8' };
+		return { label: 'custom', cls: 'text-muted/50 bg-warm' };
+	}
 </script>
+
+<!-- ── Species picker snippet (reusable for reactants + products) ──── -->
+{#snippet speciesPicker()}
+	<div class="rounded-lg border border-border bg-cream overflow-hidden" transition:fly={{ y: -5, duration: 150 }}>
+		<div class="flex gap-0.5 p-1.5 bg-warm/30">
+			{#each [
+				{ id: 'reagent', label: 'Reagents', n: reagents.length },
+				{ id: 'compound', label: 'Compounds', n: compounds.length },
+				{ id: 'custom', label: 'Custom', n: null }
+			] as t}
+				<button
+					class="flex-1 text-[10px] py-1 rounded font-medium transition-all
+						{pickerSource === t.id ? 'bg-ink text-cream' : 'text-muted hover:bg-warm'}"
+					onclick={() => (pickerSource = t.id as typeof pickerSource)}
+				>{t.label}{t.n != null ? ` (${t.n})` : ''}</button>
+			{/each}
+		</div>
+
+		<div class="p-2 max-h-48 overflow-y-auto">
+			{#if pickerSource === 'reagent'}
+				{#if reagents.length === 0}
+					<p class="text-[10px] text-muted/40 text-center py-3">No reagents in library</p>
+				{:else}
+					<div class="space-y-0.5">
+						{#each reagents as r}
+							<button
+								class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-warm/50 transition-colors"
+								onclick={() => addReagentAsSpecies(r)}
+							>
+								{#if r.smiles}
+									<div class="w-8 h-8 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
+										<MoleculeRenderer smiles={r.smiles} width={32} height={32} />
+									</div>
+								{/if}
+								<div class="flex-1 min-w-0">
+									<p class="text-xs text-ink truncate">{r.name}</p>
+									<p class="text-[10px] text-muted font-mono">{r.formula} · MW {r.molar_mass}</p>
+								</div>
+							</button>
+						{/each}
+					</div>
+				{/if}
+			{:else if pickerSource === 'compound'}
+				{#if compounds.length === 0}
+					<p class="text-[10px] text-muted/40 text-center py-3">No compounds registered</p>
+				{:else}
+					<div class="space-y-0.5">
+						{#each compounds as c}
+							<button
+								class="w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-warm/50 transition-colors"
+								onclick={() => addCompoundAsSpecies(c)}
+							>
+								{#if c.smiles}
+									<div class="w-8 h-8 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
+										<MoleculeRenderer smiles={c.smiles} width={32} height={32} />
+									</div>
+								{/if}
+								<div class="flex-1 min-w-0">
+									<p class="text-xs text-ink truncate">{c.name}</p>
+									<p class="text-[10px] text-muted font-mono">{c.formula} · MW {c.molar_mass}</p>
+								</div>
+							</button>
+						{/each}
+					</div>
+				{/if}
+			{:else}
+				<div class="space-y-2 py-1">
+					<input type="text" bind:value={customName} placeholder="Compound name"
+						class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs outline-none" />
+					<input type="text" bind:value={customFormula} placeholder="Formula (e.g. C6H12O6)"
+						class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none" />
+					{#if customFormula && calcMW(customFormula) > 0}
+						<p class="text-[10px] text-muted">MW: {calcMW(customFormula)} g/mol</p>
+					{/if}
+					<button
+						class="w-full text-xs py-1.5 rounded-lg bg-ink text-cream disabled:opacity-40"
+						onclick={addCustomSpecies} disabled={!customName.trim()}
+					>Add</button>
+				</div>
+			{/if}
+		</div>
+
+		<div class="border-t border-border/50 p-1.5">
+			<button class="w-full text-[10px] text-muted py-1 hover:text-ink" onclick={() => (pickerTarget = null)}>Cancel</button>
+		</div>
+	</div>
+{/snippet}
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
 
 <div
 	class="fixed inset-0 z-50 flex flex-col bg-cream"
@@ -198,142 +353,180 @@
 				bind:value={reactionName}
 				onblur={handleNameBlur}
 				class="flex-1 bg-transparent text-sm font-heading text-ink outline-none placeholder:text-muted/40 min-w-0"
-				placeholder="Reaction name..."
+				placeholder="Reaction name…"
 			/>
 			<button
 				class="px-3 py-1.5 rounded-lg text-sm text-red-ink hover:bg-red-ink/10 transition-colors"
 				onclick={ondelete}
-			>
-				Delete
-			</button>
+			>Delete</button>
 		</div>
 	</header>
 
-	<!-- Flow content -->
+	<!-- ── Main content ─────────────────────────────────────────────── -->
 	<main class="flex-1 overflow-auto">
 		{#if steps.length === 0}
 			<div class="text-center py-16 px-6">
-				<svg class="w-10 h-10 mx-auto text-muted/20 mb-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16" /><path d="M6 20V10l3-7h6l3 7v10" /><path d="M6 10h12" /><circle cx="12" cy="15" r="2" /></svg>
-				<p class="font-heading text-sm text-muted/60 mb-1">No reaction steps yet</p>
-				<p class="text-xs text-muted/40 mb-4">Add steps to build your reaction flow</p>
+				<svg class="w-12 h-12 mx-auto text-muted/15 mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M4 12h3l3-9 4 18 3-9h3" />
+				</svg>
+				<p class="font-heading text-sm text-muted/60 mb-1">No reaction steps</p>
+				<p class="text-xs text-muted/40 mb-4">Build your synthesis scheme step by step</p>
 			</div>
 		{:else}
-			<!-- Horizontal flow -->
-			<div class="overflow-x-auto py-6 px-4">
-				<div class="flex items-start gap-0 min-w-max">
-					{#each steps as step, i}
-						<!-- Step card -->
-						<div class="flex items-center gap-0">
-							<div class="w-56 rounded-xl border border-border bg-card/50 overflow-hidden shrink-0" transition:fly={{ x: 20, duration: 200 }}>
-								<!-- Step header -->
-								<div class="px-3 py-2 bg-warm/30 border-b border-border flex items-center justify-between">
-									<span class="text-[10px] font-medium text-muted">Step {i + 1}</span>
-									<div class="flex items-center gap-1">
-										<button
-											class="w-6 h-6 rounded flex items-center justify-center text-muted hover:text-accent hover:bg-warm transition-colors"
-											onclick={() => (calcStep = step)}
-											title="Calculate"
-										>
-											<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="1.5" /><path d="M5 5H11M5 8H11M5 11H8" /></svg>
-										</button>
-										<button
-											class="w-6 h-6 rounded flex items-center justify-center text-muted hover:text-red-ink hover:bg-red-ink/10 transition-colors"
-											onclick={() => deleteStep(i)}
-										>
-											<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4L12 12M12 4L4 12" /></svg>
-										</button>
+			<!-- ── Reaction scheme ──────────────────────────────────────── -->
+			<div class="py-4 px-3 space-y-2">
+				{#each steps as step, i}
+					{@const rResolved = step.reactants.map(resolveSpecies)}
+					{@const pResolved = step.products.map(resolveSpecies)}
+
+					<div class="rounded-xl border border-border bg-card/50 overflow-hidden" transition:fly={{ y: 15, duration: 200 }}>
+						<!-- Step header -->
+						<div class="px-3 py-1.5 bg-warm/30 border-b border-border flex items-center justify-between">
+							<span class="text-[10px] font-semibold text-muted uppercase tracking-wide">Step {i + 1}</span>
+							<div class="flex items-center gap-0.5">
+								<button
+									class="w-7 h-7 rounded-md flex items-center justify-center text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+									onclick={() => (calcStep = { ...step, reactants: rResolved, products: pResolved })}
+									title="Stoich Calculator"
+								>
+									<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="1.5" /><path d="M5 5H11M5 8H11M5 11H8" /></svg>
+								</button>
+								<button
+									class="w-7 h-7 rounded-md flex items-center justify-center text-muted hover:text-red-ink hover:bg-red-ink/10 transition-colors"
+									onclick={() => deleteStep(i)}
+								>
+									<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 4L12 12M12 4L4 12" /></svg>
+								</button>
+							</div>
+						</div>
+
+						<div class="px-3 py-3">
+							<!-- ── Reactants row ──────────────────────────────── -->
+							<div class="flex flex-wrap items-end gap-3 justify-center pb-2">
+								{#each rResolved as species, j}
+									<div class="flex flex-col items-center w-[72px]">
+										{#if species.smiles}
+											<div class="w-14 h-14 rounded-lg bg-white border border-border/50 overflow-hidden mb-1">
+												<MoleculeRenderer smiles={species.smiles} width={56} height={56} />
+											</div>
+										{:else}
+											<div class="w-14 h-14 rounded-lg bg-warm/30 border border-border/50 flex items-center justify-center mb-1">
+												<svg class="w-6 h-6 text-muted/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v18M3 12h18" /></svg>
+											</div>
+										{/if}
+										{#if species.stoich > 1}
+											<span class="text-[10px] font-mono text-accent font-semibold">{species.stoich}×</span>
+										{/if}
+										<p class="text-[10px] font-medium text-ink text-center leading-tight truncate w-full">{species.name}</p>
+										{#if species.formula}
+											<p class="text-[9px] text-muted font-mono">{formatFormula(species.formula)}</p>
+										{/if}
 									</div>
+									{#if j < rResolved.length - 1}
+										<span class="text-base text-border font-light pb-8 select-none">+</span>
+									{/if}
+								{/each}
+							</div>
+
+							<!-- ── Reaction arrow with conditions ──────────────── -->
+							<div class="py-1 px-1">
+								<input
+									type="text"
+									value={step.conditions_above}
+									placeholder="catalyst, reagent, base…"
+									class="w-full text-center text-[10px] italic bg-transparent outline-none mb-1
+										{step.conditions_above ? 'text-accent' : 'text-muted/20'}"
+									onchange={(e) => updateStepField(i, 'conditions_above', e.currentTarget.value)}
+								/>
+
+								<div class="flex items-center gap-0 mx-2">
+									<div class="flex-1 h-[2px] bg-ink/20 rounded-full"></div>
+									<svg width="10" height="8" viewBox="0 0 10 8" class="text-ink/25 -ml-px shrink-0">
+										<polygon points="0,0 10,4 0,8" fill="currentColor" />
+									</svg>
 								</div>
 
-								<!-- Reagents (inputs) -->
-								<div class="px-3 py-2 space-y-1.5">
-									{#each step.reagent_ids || [] as rid, j}
-										{@const r = getReagent(rid)}
-										{#if r}
-											<div class="flex items-center gap-2">
-												<span class="text-[10px] font-mono text-muted w-3 text-right">{(step.stoich_coefficients || [])[j] || 1}×</span>
-												<div class="flex-1 min-w-0">
-													<p class="text-xs font-medium text-ink truncate">{r.name}</p>
-													<p class="text-[10px] text-muted">{r.formula} · {(step.roles || [])[j] || 'reactant'}</p>
+								<input
+									type="text"
+									value={step.conditions_below}
+									placeholder="solvent, temp, time…"
+									class="w-full text-center text-[10px] italic bg-transparent outline-none mt-1
+										{step.conditions_below ? 'text-muted' : 'text-muted/20'}"
+									onchange={(e) => updateStepField(i, 'conditions_below', e.currentTarget.value)}
+								/>
+							</div>
+
+							<!-- ── Products row ──────────────────────────────── -->
+							{#if pResolved.length > 0}
+								<div class="flex flex-wrap items-end gap-3 justify-center pt-2">
+									{#each pResolved as species, j}
+										<div class="flex flex-col items-center w-[72px]">
+											{#if species.smiles}
+												<div class="w-14 h-14 rounded-lg bg-white border border-accent/20 overflow-hidden mb-1 ring-1 ring-accent/10">
+													<MoleculeRenderer smiles={species.smiles} width={56} height={56} />
 												</div>
-												{#if r.smiles}
-													<div class="w-8 h-8 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
-														<MoleculeRenderer smiles={r.smiles} width={40} height={40} />
-													</div>
-												{/if}
-											</div>
+											{:else}
+												<div class="w-14 h-14 rounded-lg bg-accent/5 border border-accent/20 flex items-center justify-center mb-1">
+													<svg class="w-6 h-6 text-accent/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="4" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
+												</div>
+											{/if}
+											{#if species.stoich > 1}
+												<span class="text-[10px] font-mono text-accent font-semibold">{species.stoich}×</span>
+											{/if}
+											<p class="text-[10px] font-semibold text-ink text-center leading-tight truncate w-full">{species.name}</p>
+											{#if species.formula}
+												<p class="text-[9px] text-muted font-mono">{formatFormula(species.formula)}</p>
+											{/if}
+										</div>
+										{#if j < pResolved.length - 1}
+											<span class="text-base text-border font-light pb-8 select-none">+</span>
 										{/if}
 									{/each}
 								</div>
-
-								<!-- Conditions -->
-								{#if step.conditions}
-									<div class="px-3 py-1.5 bg-accent/5 border-t border-border/50">
-										<p class="text-[10px] text-accent italic">{step.conditions}</p>
-									</div>
-								{/if}
-
-								<!-- Product -->
-								{#if step.product_reagent_id || step.product_name}
-									{@const prod = getProductDisplay(step)}
-									{#if prod}
-										<div class="px-3 py-2 bg-warm/20 border-t border-border">
-											<p class="text-[10px] text-muted mb-0.5">→ Product</p>
-											<div class="flex items-center gap-2">
-												<span class="text-[10px] font-mono text-muted w-3 text-right">{step.product_stoich || 1}×</span>
-												<div class="flex-1 min-w-0">
-													<p class="text-xs font-semibold text-ink truncate">{prod.name}</p>
-													{#if prod.formula}
-														<p class="text-[10px] text-muted">{prod.formula}</p>
-													{/if}
-												</div>
-												{#if prod.smiles}
-													<div class="w-8 h-8 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
-														<MoleculeRenderer smiles={prod.smiles} width={40} height={40} />
-													</div>
-												{/if}
-											</div>
-										</div>
-									{/if}
-								{/if}
-
-								{#if step.notes}
-									<div class="px-3 py-1.5 border-t border-border/50">
-										<p class="text-[10px] text-muted">{step.notes}</p>
-									</div>
-								{/if}
-							</div>
-
-							<!-- Arrow between steps -->
-							{#if i < steps.length - 1}
-								<div class="px-2 flex items-center">
-									<svg width="24" height="16" viewBox="0 0 24 16" class="text-border">
-										<path d="M0 8H20M16 3L22 8L16 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-									</svg>
-								</div>
+							{:else}
+								<p class="text-center text-[10px] text-muted/30 pt-2 italic">No product defined</p>
 							{/if}
+
+							<!-- Notes -->
+							<input
+								type="text"
+								value={step.notes}
+								placeholder="Notes…"
+								class="w-full text-[10px] bg-transparent outline-none mt-3 pt-2 border-t border-border/30
+									{step.notes ? 'text-muted' : 'text-muted/20'}"
+								onchange={(e) => updateStepField(i, 'notes', e.currentTarget.value)}
+							/>
 						</div>
-					{/each}
-				</div>
+					</div>
+
+					<!-- Step connector -->
+					{#if i < steps.length - 1}
+						<div class="flex justify-center py-0.5">
+							<svg width="2" height="16" class="text-border">
+								<line x1="1" y1="0" x2="1" y2="16" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" />
+							</svg>
+						</div>
+					{/if}
+				{/each}
 			</div>
 		{/if}
 
-		<!-- Yield tracking -->
+		<!-- ── Yield tracking ────────────────────────────────────────── -->
 		{#if steps.length > 0}
-			<div class="px-4 pb-4">
-				<div class="rounded-xl border border-border bg-card/50 p-4">
-					<p class="text-[10px] font-semibold text-muted uppercase tracking-wide mb-3">Reaction Yield</p>
-					<div class="grid grid-cols-3 gap-3 items-end">
+			<div class="px-3 pb-3">
+				<div class="rounded-xl border border-border bg-card/50 p-3">
+					<p class="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">Reaction Yield</p>
+					<div class="grid grid-cols-3 gap-2 items-end">
 						<div>
 							<label class="text-[10px] text-muted block mb-0.5">Actual (g)</label>
 							<input type="number" step="any" bind:value={actualYield}
-								class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-muted"
+								class="w-full bg-warm/50 border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none focus:border-muted"
 								onchange={persistYield} />
 						</div>
 						<div>
 							<label class="text-[10px] text-muted block mb-0.5">Theoretical (g)</label>
 							<input type="number" step="any" bind:value={theoreticalYield}
-								class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-muted"
+								class="w-full bg-warm/50 border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none focus:border-muted"
 								onchange={persistYield} />
 						</div>
 						<div class="text-center pb-1.5">
@@ -348,160 +541,122 @@
 			</div>
 		{/if}
 
-		<!-- Add step button -->
-		<div class="px-4 pb-6">
+		<!-- ── Add step form ─────────────────────────────────────────── -->
+		<div class="px-3 pb-6">
 			{#if showAddStep}
 				<div class="rounded-xl border border-border bg-card/50 overflow-hidden" transition:fly={{ y: 10, duration: 200 }}>
 					<div class="px-4 py-3 bg-warm/30 border-b border-border">
-						<h3 class="text-sm font-medium text-ink">Add Reaction Step</h3>
+						<h3 class="text-sm font-medium text-ink">New Reaction Step</h3>
 					</div>
 
-					<div class="p-4 space-y-4">
-						<!-- Select reagents -->
+					<div class="p-4 space-y-5">
+						<!-- ── Reactants ──────────────────────────────────── -->
 						<div>
-							<label class="text-xs font-medium text-muted mb-1.5 block">Input Reagents</label>
-							{#if newReagentIds.length > 0}
+							<p class="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">Reactants (left side)</p>
+
+							{#if newReactants.length > 0}
 								<div class="space-y-1.5 mb-2">
-									{#each newReagentIds as rid, i}
-										{@const r = getReagent(rid)}
-										{#if r}
-											<div class="flex items-center gap-2 bg-warm/20 rounded-lg px-2.5 py-1.5">
-												<input
-													type="number"
-													min="1"
-													step="1"
-													bind:value={newCoeffs[i]}
-													class="w-10 bg-transparent text-xs font-mono text-center outline-none border-b border-border"
-												/>
-												<span class="text-xs text-ink truncate flex-1">{r.name}</span>
-												<select
-													bind:value={newRoles[i]}
-													class="text-[10px] bg-transparent text-muted outline-none border-none"
-												>
-													<option value="reactant">reactant</option>
-													<option value="catalyst">catalyst</option>
-													<option value="solvent">solvent</option>
-												</select>
-												<button
-													class="text-muted hover:text-red-ink"
-													onclick={() => removeReagentFromStep(i)}
-												>×</button>
-											</div>
-										{/if}
+									{#each newReactants as species, idx}
+										{@const badge = sourceBadge(species.source)}
+										<div class="flex items-center gap-2 bg-warm/20 rounded-lg px-2.5 py-1.5">
+											<input type="number" min="1" step="1" value={species.stoich}
+												class="w-8 bg-transparent text-xs font-mono text-center outline-none border-b border-border"
+												oninput={(e) => updateStoich('reactant', idx, +(e.currentTarget.value) || 1)} />
+											<span class="text-[10px] text-muted">×</span>
+											{#if species.smiles}
+												<div class="w-6 h-6 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
+													<MoleculeRenderer smiles={species.smiles} width={24} height={24} />
+												</div>
+											{/if}
+											<span class="text-xs text-ink truncate flex-1">{species.name}</span>
+											<span class="text-[8px] px-1 py-0.5 rounded {badge.cls}">{badge.label}</span>
+											<button class="text-muted hover:text-red-ink text-sm leading-none" onclick={() => removeSpecies('reactant', idx)}>×</button>
+										</div>
 									{/each}
 								</div>
 							{/if}
 
-							<!-- Reagent picker -->
-							<div class="flex flex-wrap gap-1.5">
-								{#each reagents as r}
-									{#if !newReagentIds.includes(r.id)}
-										<button
-											class="text-[10px] px-2 py-1 rounded-lg border border-border bg-cream
-												   hover:bg-warm transition-colors text-ink"
-											onclick={() => addReagentToStep(r.id)}
-										>
-											+ {r.name}
-										</button>
-									{/if}
-								{/each}
-								{#if reagents.length === 0}
-									<p class="text-xs text-muted/60 italic">Add reagents to your library first</p>
-								{/if}
-							</div>
-						</div>
-
-						<!-- Product -->
-						<div>
-							<label class="text-xs font-medium text-muted mb-1.5 block">Product</label>
-							<!-- Mode toggle -->
-							<div class="flex gap-1 mb-2">
+							{#if pickerTarget === 'reactant'}
+								{@render speciesPicker()}
+							{:else}
 								<button
-									class="flex-1 text-[10px] py-1 rounded-md font-medium transition-all
-										{productMode === 'library' ? 'bg-ink text-cream' : 'bg-warm/40 text-muted hover:bg-warm'}"
-									onclick={() => (productMode = 'library')}
-								>From Library</button>
+									class="w-full text-[10px] py-2 rounded-lg border border-dashed border-border text-muted hover:border-accent hover:text-accent transition-colors"
+									onclick={() => { pickerTarget = 'reactant'; pickerSource = 'reagent'; }}
+								>+ Add Reactant</button>
+							{/if}
+						</div>
+
+						<!-- ── Conditions ─────────────────────────────────── -->
+						<div>
+							<p class="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">Conditions</p>
+							<div class="space-y-2">
+								<div>
+									<label class="text-[9px] text-muted/60 block mb-0.5">Above arrow (catalyst, reagent, base)</label>
+									<input type="text" bind:value={newCondAbove} placeholder="e.g. Pd(PPh₃)₄, K₂CO₃"
+										class="w-full bg-warm/50 border border-border rounded-lg px-3 py-1.5 text-xs outline-none placeholder:text-muted/25" />
+								</div>
+								<div>
+									<label class="text-[9px] text-muted/60 block mb-0.5">Below arrow (solvent, temperature, time)</label>
+									<input type="text" bind:value={newCondBelow} placeholder="e.g. THF, 80°C, 12h, N₂"
+										class="w-full bg-warm/50 border border-border rounded-lg px-3 py-1.5 text-xs outline-none placeholder:text-muted/25" />
+								</div>
+							</div>
+						</div>
+
+						<!-- ── Products ───────────────────────────────────── -->
+						<div>
+							<p class="text-[10px] font-semibold text-muted uppercase tracking-wide mb-2">Products (right side)</p>
+
+							{#if newProducts.length > 0}
+								<div class="space-y-1.5 mb-2">
+									{#each newProducts as species, idx}
+										{@const badge = sourceBadge(species.source)}
+										<div class="flex items-center gap-2 bg-accent/5 rounded-lg px-2.5 py-1.5">
+											<input type="number" min="1" step="1" value={species.stoich}
+												class="w-8 bg-transparent text-xs font-mono text-center outline-none border-b border-border"
+												oninput={(e) => updateStoich('product', idx, +(e.currentTarget.value) || 1)} />
+											<span class="text-[10px] text-muted">×</span>
+											{#if species.smiles}
+												<div class="w-6 h-6 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
+													<MoleculeRenderer smiles={species.smiles} width={24} height={24} />
+												</div>
+											{/if}
+											<span class="text-xs text-ink truncate flex-1">{species.name}</span>
+											<span class="text-[8px] px-1 py-0.5 rounded {badge.cls}">{badge.label}</span>
+											<button class="text-muted hover:text-red-ink text-sm leading-none" onclick={() => removeSpecies('product', idx)}>×</button>
+										</div>
+									{/each}
+								</div>
+							{/if}
+
+							{#if pickerTarget === 'product'}
+								{@render speciesPicker()}
+							{:else}
 								<button
-									class="flex-1 text-[10px] py-1 rounded-md font-medium transition-all
-										{productMode === 'custom' ? 'bg-ink text-cream' : 'bg-warm/40 text-muted hover:bg-warm'}"
-									onclick={() => (productMode = 'custom')}
-								>Custom Compound</button>
-							</div>
-
-							<div class="flex items-start gap-2">
-								<input
-									type="number"
-									min="1"
-									step="1"
-									bind:value={newProductCoeff}
-									class="w-10 bg-warm/50 border border-border rounded-lg text-xs font-mono text-center py-1.5 outline-none mt-0.5"
-								/>
-								<span class="text-xs text-muted mt-2">×</span>
-								{#if productMode === 'library'}
-									<select
-										bind:value={newProductId}
-										class="flex-1 bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-sm outline-none text-ink"
-									>
-										<option value="">Select product...</option>
-										{#each reagents as r}
-											<option value={r.id}>{r.name} ({r.formula})</option>
-										{/each}
-									</select>
-								{:else}
-									<div class="flex-1 space-y-1.5">
-										<input
-											type="text"
-											bind:value={customProductName}
-											placeholder="Product name"
-											class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-sm outline-none placeholder:text-muted/40"
-										/>
-										<input
-											type="text"
-											bind:value={customProductFormula}
-											placeholder="Formula (e.g. C8H10N4O2)"
-											class="w-full bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none placeholder:text-muted/40"
-										/>
-										{#if customProductFormula && calcMW(customProductFormula) > 0}
-											<p class="text-[10px] text-muted">MW: {calcMW(customProductFormula)} g/mol</p>
-										{/if}
-									</div>
-								{/if}
-							</div>
+									class="w-full text-[10px] py-2 rounded-lg border border-dashed border-border text-muted hover:border-accent hover:text-accent transition-colors"
+									onclick={() => { pickerTarget = 'product'; pickerSource = 'reagent'; }}
+								>+ Add Product</button>
+							{/if}
 						</div>
 
-						<!-- Conditions -->
+						<!-- ── Notes ──────────────────────────────────────── -->
 						<div>
-							<label class="text-xs font-medium text-muted mb-1.5 block">Conditions</label>
-							<input
-								type="text"
-								bind:value={newConditions}
-								placeholder="e.g. reflux, 80°C, 2h, N₂ atmosphere"
-								class="w-full bg-warm/50 border border-border rounded-lg px-3 py-2 text-sm outline-none placeholder:text-muted/40"
-							/>
-						</div>
-
-						<!-- Notes -->
-						<div>
-							<label class="text-xs font-medium text-muted mb-1.5 block">Notes (optional)</label>
-							<input
-								type="text"
-								bind:value={newNotes}
-								placeholder="Additional notes..."
-								class="w-full bg-warm/50 border border-border rounded-lg px-3 py-2 text-sm outline-none placeholder:text-muted/40"
-							/>
+							<p class="text-[10px] font-semibold text-muted uppercase tracking-wide mb-1.5">Notes</p>
+							<input type="text" bind:value={newNotes} placeholder="Observations, workup, TLC…"
+								class="w-full bg-warm/50 border border-border rounded-lg px-3 py-1.5 text-xs outline-none placeholder:text-muted/25" />
 						</div>
 					</div>
 
+					<!-- Action buttons -->
 					<div class="flex gap-2 px-4 py-3 bg-warm/20 border-t border-border">
 						<button
 							class="flex-1 text-sm py-2 rounded-lg border border-border text-muted hover:bg-warm transition-colors"
-							onclick={() => { showAddStep = false; resetNewStep(); }}
+							onclick={() => { showAddStep = false; resetForm(); }}
 						>Cancel</button>
 						<button
-							class="flex-1 text-sm py-2 rounded-lg bg-accent text-cream active:scale-95 transition-transform
-								   disabled:opacity-40"
+							class="flex-1 text-sm py-2 rounded-lg bg-ink text-cream active:scale-95 transition-transform disabled:opacity-40"
 							onclick={saveStep}
-							disabled={newReagentIds.length === 0}
+							disabled={newReactants.length === 0}
 						>Add Step</button>
 					</div>
 				</div>
@@ -510,9 +665,7 @@
 					class="w-full text-sm py-2.5 rounded-lg border border-dashed border-border text-muted
 						   hover:border-accent hover:text-accent transition-colors"
 					onclick={() => (showAddStep = true)}
-				>
-					+ Add Reaction Step
-				</button>
+				>+ Add Reaction Step</button>
 			{/if}
 		</div>
 	</main>
@@ -524,6 +677,5 @@
 		open={true}
 		onclose={() => (calcStep = null)}
 		step={calcStep}
-		{reagents}
 	/>
 {/if}

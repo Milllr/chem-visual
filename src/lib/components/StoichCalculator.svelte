@@ -1,48 +1,40 @@
 <script lang="ts">
-	import type { Reagent, ReactionStep } from '$lib/db';
+	import type { ReactionStep, ChemSpecies } from '$lib/db';
 	import { fly } from 'svelte/transition';
 
 	interface Props {
 		open: boolean;
 		onclose: () => void;
 		step: ReactionStep;
-		reagents: Reagent[];
 	}
 
-	let { open, onclose, step, reagents }: Props = $props();
+	let { open, onclose, step }: Props = $props();
 
-	// Reference reagent = the one everything is relative to (1.0 equiv)
+	// Reference species = the one everything is relative to (1.0 equiv)
 	let refIdx = $state(0);
-	let refMass = $state(1.0); // grams of reference reagent
+	let refMass = $state(1.0); // grams of reference species
 
 	// Per-row equiv overrides (index → custom equiv value)
 	let equivEdits = $state<Record<number, number>>({});
 	// Per-row back-calc: mass → equiv mode (index → mass input)
 	let massEdits = $state<Record<number, number | null>>({});
 
-	let reagentIds = $derived(step.reagent_ids || []);
-	let coeffs = $derived(step.stoich_coefficients || []);
-	let roles = $derived(step.roles || []);
-
-	let refReagent = $derived(reagents.find(r => r.id === reagentIds[refIdx]));
-	let refMw = $derived(refReagent?.molar_mass || 0);
-	let refCoeff = $derived(coeffs[refIdx] || 1);
+	let reactants = $derived(step.reactants || []);
+	let refSpecies = $derived(reactants[refIdx]);
+	let refMw = $derived(refSpecies?.mw || 0);
+	let refCoeff = $derived(refSpecies?.stoich || 1);
 	let refMoles = $derived(refMw > 0 ? refMass / refMw : 0);
 
-	let product = $derived(reagents.find(r => r.id === step.product_reagent_id));
-	let productMw = $derived(product?.molar_mass || 0);
-	let productCoeff = $derived(step.product_stoich || 1);
+	let productSpecies = $derived((step.products || [])[0]);
+	let productMw = $derived(productSpecies?.mw || 0);
+	let productCoeff = $derived(productSpecies?.stoich || 1);
 	let theoMoles = $derived(refMoles > 0 && refCoeff > 0 ? (productCoeff / refCoeff) * refMoles : 0);
 	let theoMass = $derived(theoMoles * productMw);
 
 	// Build equivalence rows
 	let calcRows = $derived(
-		reagentIds.map((rid, i) => {
-			const r = reagents.find(rg => rg.id === rid);
-			if (!r) return null;
-			const coeff = coeffs[i] || 1;
-			const role = roles[i] || 'reactant';
-			const stoichEquiv = refCoeff > 0 ? coeff / refCoeff : 1;
+		reactants.map((species, i) => {
+			const stoichEquiv = refCoeff > 0 ? species.stoich / refCoeff : 1;
 			const isRef = i === refIdx;
 
 			let equiv: number;
@@ -53,25 +45,19 @@
 				equiv = 1.0;
 				mass = refMass;
 			} else if (massEdits[i] != null) {
-				// Back-calculation: mass → equiv
 				mass = massEdits[i]!;
-				equiv = refMoles > 0 && r.molar_mass > 0 ? (mass / r.molar_mass) / refMoles : 0;
+				equiv = refMoles > 0 && species.mw > 0 ? (mass / species.mw) / refMoles : 0;
 				backCalc = true;
 			} else {
-				// Forward: equiv → mass
 				equiv = equivEdits[i] ?? stoichEquiv;
-				mass = equiv * refMoles * r.molar_mass;
+				mass = equiv * refMoles * species.mw;
 			}
 
-			const moles = r.molar_mass > 0 ? mass / r.molar_mass : 0;
-			const volume = r.density ? mass / r.density : null;
+			const moles = species.mw > 0 ? mass / species.mw : 0;
+			const volume = species.density ? mass / species.density : null;
 
-			return { reagent: r, idx: i, coeff, role, stoichEquiv, equiv, moles, mass, volume, isRef, backCalc };
-		}).filter(Boolean) as {
-			reagent: Reagent; idx: number; coeff: number; role: string;
-			stoichEquiv: number; equiv: number; moles: number; mass: number;
-			volume: number | null; isRef: boolean; backCalc: boolean;
-		}[]
+			return { species, idx: i, stoichEquiv, equiv, moles, mass, volume, isRef, backCalc };
+		})
 	);
 
 	function fmtN(n: number, dp = 4): string {
@@ -85,7 +71,6 @@
 		const n = parseFloat(val);
 		if (!isNaN(n) && n >= 0) {
 			equivEdits = { ...equivEdits, [idx]: n };
-			// Clear any mass back-calc for this row
 			const { [idx]: _, ...rest } = massEdits;
 			massEdits = rest;
 		}
@@ -96,11 +81,6 @@
 		if (!isNaN(n) && n >= 0) {
 			massEdits = { ...massEdits, [idx]: n };
 		}
-	}
-
-	function clearBackCalc(idx: number) {
-		const { [idx]: _, ...rest } = massEdits;
-		massEdits = rest;
 	}
 
 	function resetEquiv(idx: number) {
@@ -131,7 +111,7 @@
 			<p class="text-[10px] text-muted">Calculate masses from molar equivalents relative to a reference reagent</p>
 		</div>
 
-		<!-- Reference reagent picker -->
+		<!-- Reference species picker -->
 		<div class="px-4 pb-3 shrink-0 border-b border-border">
 			<div class="rounded-lg bg-warm/40 border border-border p-3 space-y-2">
 				<div class="flex items-center gap-2">
@@ -142,11 +122,8 @@
 					value={refIdx}
 					onchange={(e) => { refIdx = +e.currentTarget.value; equivEdits = {}; massEdits = {}; }}
 				>
-					{#each reagentIds as rid, i}
-						{@const r = reagents.find(rg => rg.id === rid)}
-						{#if r}
-							<option value={i}>{r.name} ({(roles[i] || 'reactant')})</option>
-						{/if}
+					{#each reactants as species, i}
+						<option value={i}>{species.name} ({species.formula || 'no formula'})</option>
 					{/each}
 				</select>
 				<div class="flex items-center gap-2">
@@ -170,8 +147,8 @@
 					<div class="rounded-lg border border-border bg-card/50 p-2.5 space-y-1.5">
 						<div class="flex items-center justify-between">
 							<div class="min-w-0">
-								<p class="text-xs font-medium text-ink truncate">{row.reagent.name}</p>
-								<p class="text-[10px] text-muted">{row.role} · MW {row.reagent.molar_mass.toFixed(2)}</p>
+								<p class="text-xs font-medium text-ink truncate">{row.species.name}</p>
+								<p class="text-[10px] text-muted">MW {row.species.mw.toFixed(2)}</p>
 							</div>
 							{#if equivEdits[row.idx] != null || massEdits[row.idx] != null}
 								<button class="text-[10px] text-accent hover:underline shrink-0" onclick={() => resetEquiv(row.idx)}>reset</button>
@@ -225,11 +202,11 @@
 
 		<!-- Theoretical yield footer -->
 		<div class="px-4 py-3 bg-warm/30 border-t border-border shrink-0">
-			{#if product && productMw > 0}
+			{#if productSpecies && productMw > 0}
 				<div class="flex items-center justify-between">
 					<div>
 						<p class="text-[10px] font-semibold text-muted uppercase tracking-wide">Theoretical Yield</p>
-						<p class="text-xs text-muted">{product.name} · MW {productMw.toFixed(2)}</p>
+						<p class="text-xs text-muted">{productSpecies.name} · MW {productMw.toFixed(2)}</p>
 					</div>
 					<div class="text-right">
 						<p class="text-base font-mono font-bold text-ink">{fmtN(theoMass, 3)} g</p>
@@ -237,7 +214,7 @@
 					</div>
 				</div>
 			{:else}
-				<p class="text-[10px] text-muted">Set a product in the reaction step to see theoretical yield.</p>
+				<p class="text-[10px] text-muted">Add a product to the step to see theoretical yield.</p>
 			{/if}
 		</div>
 	</div>

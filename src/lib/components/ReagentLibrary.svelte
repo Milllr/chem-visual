@@ -373,6 +373,7 @@
 	<ReactionFlow
 		reaction={selectedReaction}
 		{reagents}
+		{compounds}
 		onupdate={(r) => { updateReaction(r); selectedReaction = r; }}
 		ondelete={() => { selectedReaction = null; deleteReaction(reactionId); }}
 		onclose={() => (selectedReaction = null)}

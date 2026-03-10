@@ -108,19 +108,23 @@ export interface Reaction {
 	updated: string;
 }
 
+export interface ChemSpecies {
+	source: 'reagent' | 'compound' | 'custom';
+	ref_id?: string;     // ID in reagent or compound table
+	name: string;
+	formula: string;
+	mw: number;          // g/mol
+	smiles: string;
+	density?: number;    // g/mL (from reagent library)
+	stoich: number;      // stoichiometric coefficient
+}
+
 export interface ReactionStep {
 	id: string;
-	reagent_ids: string[];
-	stoich_coefficients: number[];
-	roles: string[]; // 'reactant' | 'catalyst' | 'solvent' | 'product'
-	product_reagent_id?: string;
-	product_stoich?: number;
-	// Custom product (when product is not in reagent library)
-	product_name?: string;
-	product_formula?: string;
-	product_mw?: number;
-	product_smiles?: string;
-	conditions: string; // e.g. "reflux, 2h, 80°C"
+	reactants: ChemSpecies[];     // left side of arrow
+	products: ChemSpecies[];      // right side of arrow
+	conditions_above: string;     // catalyst, reagent, base (shown above arrow)
+	conditions_below: string;     // solvent, temperature, time (shown below arrow)
 	notes: string;
 }
 
