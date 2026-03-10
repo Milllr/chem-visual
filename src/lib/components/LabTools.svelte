@@ -141,7 +141,7 @@
 		{ id: 'molarity', label: 'Molarity' },
 		{ id: 'yield', label: '% Yield' },
 		{ id: 'convert', label: 'Units' },
-		{ id: 'limiting', label: 'Limiting' },
+		{ id: 'equiv', label: 'Equiv' },
 		{ id: 'gas', label: 'Gas Law' }
 	];
 
@@ -345,11 +345,11 @@
 				</div>
 			</div>
 
-		{:else if activeCalc === 'limiting'}
-			<!-- Limiting Reagent -->
+		{:else if activeCalc === 'equiv'}
+			<!-- Equivalence Calculator -->
 			<div class="px-4 py-3 bg-warm/30 border-b border-border">
-				<h3 class="text-sm font-medium text-ink">Limiting Reagent Finder</h3>
-				<p class="text-[10px] text-muted mt-0.5">Identify which reagent limits your reaction</p>
+				<h3 class="text-sm font-medium text-ink">Equivalence Calculator</h3>
+				<p class="text-[10px] text-muted mt-0.5">Calculate molar equivalents relative to the limiting reagent</p>
 			</div>
 			<div class="p-4 space-y-3">
 				{#each lrReagents as r, i}
@@ -384,15 +384,34 @@
 
 				{#if limitingResult()}
 					{@const lr = limitingResult()}
-					<div class="rounded-lg bg-accent/5 border border-accent/20 px-3 py-2 space-y-1">
+					<div class="rounded-lg bg-accent/5 border border-accent/20 px-3 py-2 space-y-2">
 						{#if lr.limiting}
-							<p class="text-xs text-muted">Limiting reagent:</p>
-							<p class="text-sm font-semibold text-ink">{lr.limiting.name || 'Reagent'}</p>
-							<p class="text-[10px] text-muted">{fmtNum(lr.limiting.moles)} mol ({fmtNum(lr.limiting.molesPerCoeff)} mol/coeff)</p>
+							<div>
+								<p class="text-[10px] font-semibold text-muted uppercase tracking-wide">Limiting Reagent</p>
+								<p class="text-sm font-semibold text-ink">{lr.limiting.name || 'Reagent'}</p>
+								<p class="text-[10px] text-muted">{fmtNum(lr.limiting.moles)} mol · 1.00 equiv (reference)</p>
+							</div>
+						{/if}
+						{#if lr.excess.length > 0}
+							<div class="border-t border-border/30 pt-2 space-y-1.5">
+								<p class="text-[10px] font-semibold text-muted uppercase tracking-wide">Equivalents</p>
+								{#each lr.ratios as r}
+									{#if r !== lr.limiting}
+										{@const equiv = lr.limiting ? r.moles / lr.limiting.moles : 0}
+										<div class="flex items-center justify-between text-xs">
+											<span class="text-ink">{r.name || 'Reagent'}</span>
+											<div class="text-right">
+												<span class="font-mono font-semibold text-ink">{fmtNum(equiv)} equiv</span>
+												<span class="text-[10px] text-muted ml-1">({fmtNum(r.moles)} mol)</span>
+											</div>
+										</div>
+									{/if}
+								{/each}
+							</div>
 						{/if}
 						{#each lr.excess as ex}
-							<p class="text-[10px] text-muted mt-1">
-								{ex.name || 'Reagent'}: {fmtNum(ex.excessMoles)} mol excess ({fmtNum(ex.excessMass)} g)
+							<p class="text-[10px] text-muted">
+								{ex.name || 'Reagent'}: {fmtNum(ex.excessMoles)} mol excess ({fmtNum(ex.excessMass)} g extra)
 							</p>
 						{/each}
 					</div>

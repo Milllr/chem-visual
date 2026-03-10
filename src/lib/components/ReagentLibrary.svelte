@@ -1,10 +1,11 @@
 <script lang="ts">
-	import type { Reagent, Reaction, CasCandidate } from '$lib/db';
+	import type { Reagent, Reaction, CasCandidate, Compound } from '$lib/db';
 	import { generateId } from '$lib/db';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 	import CasSearch from './CasSearch.svelte';
 	import ReactionFlow from './ReactionFlow.svelte';
 	import LabTools from './LabTools.svelte';
+	import CompoundTracker from './CompoundTracker.svelte';
 	import { fly } from 'svelte/transition';
 
 	interface Props {
@@ -13,14 +14,16 @@
 		notebookId: string;
 		reagents: Reagent[];
 		reactions: Reaction[];
+		compounds: Compound[];
 		onreagentschange: (reagents: Reagent[]) => void;
 		onreactionschange: (reactions: Reaction[]) => void;
+		oncompoundschange: (compounds: Compound[]) => void;
 		oninsertblock: (type: string, content: string, metadata: Record<string, any>) => void;
 	}
 
-	let { open, onclose, notebookId, reagents, reactions, onreagentschange, onreactionschange, oninsertblock }: Props = $props();
+	let { open, onclose, notebookId, reagents, reactions, compounds, onreagentschange, onreactionschange, oncompoundschange, oninsertblock }: Props = $props();
 
-	let tab = $state<'reagents' | 'reactions' | 'tools'>('reagents');
+	let tab = $state<'reagents' | 'reactions' | 'compounds' | 'tools'>('reagents');
 	let casSearchOpen = $state(false);
 	let selectedReaction = $state<Reaction | null>(null);
 	let expandedReagent = $state<string | null>(null);
@@ -128,49 +131,41 @@
 		transition:fly={{ y: 40, duration: 250 }}
 	>
 		<!-- Header -->
-		<header class="shrink-0 bg-cream/95 backdrop-blur-sm border-b border-border safe-top z-20">
-			<div class="flex items-center gap-2 px-3 py-2">
+		<header class="shrink-0 bg-cream border-b border-border safe-top z-20">
+			<div class="flex items-center gap-3 px-4 py-3">
 				<button
-					class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-warm active:bg-warm transition-colors text-muted"
+					class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-warm active:bg-warm transition-colors text-muted"
 					onclick={onclose}
 				>
 					<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 10H5M5 10L9 6M5 10L9 14" /></svg>
 				</button>
-				<h2 class="flex-1 font-heading text-base text-ink">Reagent Library</h2>
+				<div class="flex-1">
+					<h2 class="font-heading text-lg text-ink tracking-tight">Lab Library</h2>
+					<p class="text-[10px] text-muted -mt-0.5">Reagents, reactions, compounds & tools</p>
+				</div>
+				<div class="w-9 h-9 flex items-center justify-center rounded-xl bg-accent/8 text-accent">
+					<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M9 3h6l2 4H7l2-4z" /><path d="M7 7v10a3 3 0 003 3h4a3 3 0 003-3V7" /><path d="M10 12h4" />
+					</svg>
+				</div>
 			</div>
 
-			<!-- Tabs -->
-			<div class="flex border-b border-border px-3">
-				<button
-					class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px"
-					class:border-accent={tab === 'reagents'}
-					class:text-ink={tab === 'reagents'}
-					class:border-transparent={tab !== 'reagents'}
-					class:text-muted={tab !== 'reagents'}
-					onclick={() => (tab = 'reagents')}
-				>
-					Reagents ({reagents.length})
-				</button>
-				<button
-					class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px"
-					class:border-accent={tab === 'reactions'}
-					class:text-ink={tab === 'reactions'}
-					class:border-transparent={tab !== 'reactions'}
-					class:text-muted={tab !== 'reactions'}
-					onclick={() => (tab = 'reactions')}
-				>
-					Reactions ({reactions.length})
-				</button>
-				<button
-					class="px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px"
-					class:border-accent={tab === 'tools'}
-					class:text-ink={tab === 'tools'}
-					class:border-transparent={tab !== 'tools'}
-					class:text-muted={tab !== 'tools'}
-					onclick={() => (tab = 'tools')}
-				>
-					Tools
-				</button>
+			<!-- Pill tabs -->
+			<div class="flex gap-1 px-4 pb-3">
+				{#each [
+					{ id: 'reagents', label: 'Reagents', count: reagents.length },
+					{ id: 'reactions', label: 'Reactions', count: reactions.length },
+					{ id: 'compounds', label: 'Compounds', count: compounds.length },
+					{ id: 'tools', label: 'Tools', count: null }
+				] as t}
+					<button
+						class="flex-1 px-1.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-center
+							{tab === t.id ? 'bg-ink text-cream shadow-sm' : 'text-muted bg-warm/40 hover:bg-warm'}"
+						onclick={() => (tab = t.id as typeof tab)}
+					>
+						{t.label}{t.count != null ? ` ${t.count}` : ''}
+					</button>
+				{/each}
 			</div>
 		</header>
 
@@ -324,6 +319,15 @@
 						+ New Reaction
 					</button>
 				</div>
+
+			{:else if tab === 'compounds'}
+				<CompoundTracker
+					{compounds}
+					{reactions}
+					{reagents}
+					{notebookId}
+					{oncompoundschange}
+				/>
 
 			{:else if tab === 'tools'}
 				<LabTools />

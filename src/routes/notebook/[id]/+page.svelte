@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import type { PageData } from './$types';
-	import type { Block, ChatMessage, Page, Notebook, Reagent, Reaction } from '$lib/db';
+	import type { Block, ChatMessage, Page, Notebook, Reagent, Reaction, Compound } from '$lib/db';
 	import { generateId } from '$lib/db';
 	import { compressImage } from '$lib/image';
 	import ActionBar from '$lib/components/ActionBar.svelte';
@@ -25,6 +25,7 @@
 	let chatMessages = $state<ChatMessage[]>([]);
 	let reagents = $state<Reagent[]>([]);
 	let reactions = $state<Reaction[]>([]);
+	let compounds = $state<Compound[]>([]);
 	let editModalOpen = $state(false);
 	let libraryOpen = $state(false);
 
@@ -37,6 +38,7 @@
 		chatMessages = data.chatMessages;
 		reagents = data.reagents;
 		reactions = data.reactions;
+		compounds = data.compounds;
 	});
 	let chatOpen = $state(false);
 	let moleculeInputOpen = $state(false);
@@ -917,8 +919,10 @@
 	notebookId={data.notebook.id}
 	{reagents}
 	{reactions}
+	{compounds}
 	onreagentschange={(r) => (reagents = r)}
 	onreactionschange={(r) => (reactions = r)}
+	oncompoundschange={(c) => (compounds = c)}
 	oninsertblock={async (type, content, metadata) => {
 		const res = await fetch('/api/blocks', {
 			method: 'POST',

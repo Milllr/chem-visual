@@ -103,3 +103,32 @@ CREATE INDEX IF NOT EXISTS idx_chat_notebook ON chat_message(notebook_id, create
 CREATE INDEX IF NOT EXISTS idx_reagent_notebook ON reagent(notebook_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_reagent_cas ON reagent(cas);
 CREATE INDEX IF NOT EXISTS idx_reaction_notebook ON reaction(notebook_id, sort_order);
+
+CREATE TABLE IF NOT EXISTS compound (
+  id                TEXT PRIMARY KEY,
+  notebook_id       TEXT NOT NULL REFERENCES notebook(id) ON DELETE CASCADE,
+  name              TEXT NOT NULL DEFAULT '',
+  smiles            TEXT DEFAULT '',
+  formula           TEXT DEFAULT '',
+  molar_mass        REAL DEFAULT 0,
+  reaction_id       TEXT REFERENCES reaction(id) ON DELETE SET NULL,
+  actual_yield      REAL DEFAULT 0,
+  theoretical_yield REAL DEFAULT 0,
+  yield_percent     REAL DEFAULT 0,
+  nmr_data          TEXT DEFAULT '{}',
+  mass_spec         INTEGER DEFAULT 0,
+  mass_spec_type    TEXT DEFAULT '',
+  mass_spec_notes   TEXT DEFAULT '',
+  ir_data           INTEGER DEFAULT 0,
+  ir_notes          TEXT DEFAULT '',
+  crystal           INTEGER DEFAULT 0,
+  crystal_notes     TEXT DEFAULT '',
+  notes             TEXT DEFAULT '',
+  metadata          TEXT DEFAULT '{}',
+  sort_order        INTEGER DEFAULT 0,
+  created           TEXT DEFAULT (datetime('now')),
+  updated           TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_compound_notebook ON compound(notebook_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_compound_reaction ON compound(reaction_id);

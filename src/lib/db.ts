@@ -116,6 +116,48 @@ export interface ReactionStep {
 	notes: string;
 }
 
+export interface Compound {
+	id: string;
+	notebook_id: string;
+	name: string;
+	smiles: string;
+	formula: string;
+	molar_mass: number;
+	reaction_id: string | null;
+	actual_yield: number;
+	theoretical_yield: number;
+	yield_percent: number;
+	nmr_data: string;
+	mass_spec: number;
+	mass_spec_type: string;
+	mass_spec_notes: string;
+	ir_data: number;
+	ir_notes: string;
+	crystal: number;
+	crystal_notes: string;
+	notes: string;
+	metadata: string;
+	sort_order: number;
+	created: string;
+	updated: string;
+}
+
+export const NMR_NUCLEI = [
+	{ id: '1H', label: '¹H', name: 'Proton' },
+	{ id: '13C', label: '¹³C', name: 'Carbon-13' },
+	{ id: '19F', label: '¹⁹F', name: 'Fluorine-19' },
+	{ id: '31P', label: '³¹P', name: 'Phosphorus-31' },
+	{ id: '11B', label: '¹¹B', name: 'Boron-11' },
+	{ id: '15N', label: '¹⁵N', name: 'Nitrogen-15' },
+	{ id: '29Si', label: '²⁹Si', name: 'Silicon-29' },
+	{ id: '7Li', label: '⁷Li', name: 'Lithium-7' },
+	{ id: 'DEPT', label: 'DEPT', name: 'DEPT-135' },
+	{ id: 'COSY', label: 'COSY', name: '¹H-¹H COSY' },
+	{ id: 'HSQC', label: 'HSQC', name: '¹H-¹³C HSQC' },
+	{ id: 'HMBC', label: 'HMBC', name: '¹H-¹³C HMBC' },
+	{ id: 'NOESY', label: 'NOESY', name: 'NOESY' },
+];
+
 export const NOTEBOOK_COLORS = [
 	'#C4A882', // kraft
 	'#8BA88C', // sage
