@@ -26,7 +26,10 @@ export function buildMessages(
 	pageSummaries: string[],
 	chatHistory: { role: string; content: string }[],
 	userMessage: string,
-	notebookGoal?: string
+	notebookGoal?: string,
+	reagents?: { name: string; formula: string; cas: string; molar_mass: number }[],
+	reactions?: { name: string; target_name: string; steps: string; yield_percent: number }[],
+	compoundsList?: { name: string; formula: string; molar_mass: number; yield_percent: number; notes: string }[]
 ) {
 	let context = `\n\nNotebook: "${notebookTitle}"`;
 	if (notebookGoal) {
@@ -34,6 +37,48 @@ export function buildMessages(
 	}
 	if (pageSummaries.length > 0) {
 		context += `\nPages:\n${pageSummaries.join('\n')}`;
+	}
+
+	// Add reagent library context
+	if (reagents && reagents.length > 0) {
+		context += `\n\nReagent Library (${reagents.length} reagents):`;
+		for (const r of reagents) {
+			context += `\n- ${r.name} (${r.formula}, CAS ${r.cas}, MW ${r.molar_mass})`;
+		}
+	}
+
+	// Add reaction context
+	if (reactions && reactions.length > 0) {
+		context += `\n\nReactions (${reactions.length}):`;
+		for (const rx of reactions) {
+			let rxLine = `\n- ${rx.name}`;
+			if (rx.target_name) rxLine += ` → ${rx.target_name}`;
+			if (rx.yield_percent > 0) rxLine += ` (${rx.yield_percent}% yield)`;
+			// Parse steps to show conditions
+			try {
+				const steps = JSON.parse(rx.steps || '[]');
+				for (const step of steps) {
+					const reactantNames = (step.reactants || []).map((s: any) => s.name).join(' + ');
+					const productNames = (step.products || []).map((s: any) => s.name).join(' + ');
+					let stepLine = `  ${reactantNames} → ${productNames}`;
+					if (step.conditions_above) stepLine += ` [${step.conditions_above}]`;
+					if (step.conditions_below) stepLine += ` (${step.conditions_below})`;
+					rxLine += `\n  ${stepLine}`;
+				}
+			} catch {}
+			context += rxLine;
+		}
+	}
+
+	// Add compound tracker context
+	if (compoundsList && compoundsList.length > 0) {
+		context += `\n\nCompounds (${compoundsList.length}):`;
+		for (const c of compoundsList) {
+			let cLine = `\n- ${c.name} (${c.formula}, MW ${c.molar_mass})`;
+			if (c.yield_percent > 0) cLine += ` ${c.yield_percent}% yield`;
+			if (c.notes) cLine += ` — ${c.notes.slice(0, 100)}`;
+			context += cLine;
+		}
 	}
 
 	return [

@@ -300,8 +300,14 @@
 	/** Detect if a string looks like SMILES rather than a molecular formula */
 	function looksLikeSmiles(s: string): boolean {
 		if (!s || s.length < 2) return false;
-		// SMILES contain characters like =, #, @, \, /, [, ], lowercase letters, or digits mid-word
-		return /[=#@\\\/\[\]]/.test(s) || /[a-z]/.test(s);
+		// Obvious non-SMILES: contains spaces (likely an error message or name)
+		if (s.includes(' ')) return false;
+		// SMILES-specific characters that never appear in molecular formulas
+		if (/[=#@\\\/(\)\[\]]/.test(s)) return true;
+		// Strip known element symbols (2-letter lowercase patterns in formulas)
+		// If after stripping all valid formula tokens there are remaining lowercase letters, it's SMILES
+		const stripped = s.replace(/[A-Z][a-z]?|\d+|[\+\-\.·]/g, '');
+		return stripped.length > 0 && /[a-z]/.test(stripped);
 	}
 
 	function resolveSpecies(s: ChemSpecies): ChemSpecies {
@@ -332,13 +338,21 @@
 			}
 		}
 
-		// 2. If we still don't have SMILES, try a name-based match against reagents
+		// 2. If we still don't have SMILES, try name-based match against reagents then compounds
 		if (!result.smiles && result.name) {
-			const byName = reagents.find(rg => rg.name.toLowerCase() === result.name.toLowerCase());
-			if (byName?.smiles) {
-				result.smiles = byName.smiles;
-				if (!result.formula && byName.formula) result.formula = byName.formula;
-				if (!result.mw && byName.molar_mass) result.mw = byName.molar_mass;
+			const nameLC = result.name.toLowerCase();
+			const byReagent = reagents.find(rg => rg.name.toLowerCase() === nameLC);
+			if (byReagent?.smiles) {
+				result.smiles = byReagent.smiles;
+				if (!result.formula && byReagent.formula) result.formula = byReagent.formula;
+				if (!result.mw && byReagent.molar_mass) result.mw = byReagent.molar_mass;
+			} else {
+				const byCompound = compounds.find(cp => cp.name.toLowerCase() === nameLC);
+				if (byCompound) {
+					if (byCompound.smiles) result.smiles = byCompound.smiles;
+					if (!result.formula && byCompound.formula && !looksLikeSmiles(byCompound.formula)) result.formula = byCompound.formula;
+					if (!result.mw && byCompound.molar_mass) result.mw = byCompound.molar_mass;
+				}
 			}
 		}
 
@@ -421,8 +435,10 @@
 								{#if c.smiles}
 									<div class="w-10 h-10 rounded bg-white border border-border/50 shrink-0 overflow-hidden">
 										<MoleculeRenderer smiles={c.smiles} width={40} height={40} />
-									</div>
-								{/if}
+									</div>							{:else}
+								<div class="w-10 h-10 rounded bg-warm/40 border border-border/50 shrink-0 flex items-center justify-center">
+									<span class="text-[9px] font-mono text-muted/60 leading-tight text-center px-0.5">{@html formatFormula(c.formula || '?')}</span>
+								</div>								{/if}
 								<div class="flex-1 min-w-0">
 									<p class="text-sm text-ink truncate">{c.name}</p>
 									<p class="text-xs text-muted font-mono">{c.formula} · MW {c.molar_mass}</p>

@@ -33,6 +33,16 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		(p) => `- ${p.title}${p.text_preview ? ': ' + p.text_preview.slice(0, 150) : ''}`
 	);
 
+	// Load reagents, reactions, and compounds for this notebook
+	const [reagentsResult, reactionsResult, compoundsResult] = await Promise.all([
+		db.prepare('SELECT name, formula, cas, molar_mass FROM reagent WHERE notebook_id = ? ORDER BY sort_order')
+			.bind(notebook_id).all<{ name: string; formula: string; cas: string; molar_mass: number }>(),
+		db.prepare('SELECT name, target_name, steps, yield_percent FROM reaction WHERE notebook_id = ? ORDER BY sort_order')
+			.bind(notebook_id).all<{ name: string; target_name: string; steps: string; yield_percent: number }>(),
+		db.prepare('SELECT name, formula, molar_mass, yield_percent, notes FROM compound WHERE notebook_id = ? ORDER BY sort_order')
+			.bind(notebook_id).all<{ name: string; formula: string; molar_mass: number; yield_percent: number; notes: string }>()
+	]);
+
 	// Load chat history
 	const { results: history } = await db
 		.prepare(
@@ -42,7 +52,12 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		.all<{ role: string; content: string }>();
 
 	// Build messages and call AI
-	const messages = buildMessages(notebook.title, pageSummaries, history || [], message, notebook.goal);
+	const messages = buildMessages(
+		notebook.title, pageSummaries, history || [], message, notebook.goal,
+		reagentsResult.results || [],
+		reactionsResult.results || [],
+		compoundsResult.results || []
+	);
 
 	// Save user message
 	const userMsgId = generateId();
