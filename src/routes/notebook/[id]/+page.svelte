@@ -286,6 +286,23 @@
 		chatSending = false;
 	}
 
+	// Delete a single chat message
+	async function deleteChatMessage(id: string) {
+		await fetch(`/api/chat/${id}`, { method: 'DELETE' });
+		chatMessages = chatMessages.filter(m => m.id !== id);
+	}
+
+	// Resend: delete this message + everything after it, then re-send
+	async function resendChatMessage(id: string, content: string, model: string) {
+		// Delete from DB: this msg and all after
+		await fetch(`/api/chat/${id}?after=true`, { method: 'DELETE' });
+		// Remove from local state
+		const idx = chatMessages.findIndex(m => m.id === id);
+		if (idx >= 0) chatMessages = chatMessages.slice(0, idx);
+		// Re-send the message
+		await sendChat(content, model);
+	}
+
 	// Pin chat response to current page
 	async function pinToPage(content: string) {
 		const res = await fetch('/api/blocks', {
@@ -922,6 +939,8 @@
 	onclose={() => (chatOpen = false)}
 	onsend={sendChat}
 	onpin={pinToPage}
+	ondelete={deleteChatMessage}
+	onresend={resendChatMessage}
 />
 
 <!-- Edit notebook modal -->

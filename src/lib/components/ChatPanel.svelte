@@ -11,15 +11,75 @@
 		onclose: () => void;
 		onsend: (message: string, model: string, attachmentNames?: string[], imageDataUrls?: string[]) => void;
 		onpin: (content: string) => void;
+		ondelete: (id: string) => void;
+		onresend: (id: string, newContent: string, model: string) => void;
 		onaddcontext?: (text: string, filename: string) => void;
 	}
 
-	let { open, messages, sending = false, onclose, onsend, onpin, onaddcontext }: Props = $props();
+	let { open, messages, sending = false, onclose, onsend, onpin, ondelete, onresend, onaddcontext }: Props = $props();
 	let input = $state('');
 	let model = $state<'openai' | 'perplexity'>('openai');
 	let contextFiles = $state<{ name: string; text: string; isImage?: boolean }[]>([]);
 	let contextFileInput: HTMLInputElement;
 	let messagesContainer: HTMLDivElement;
+
+	// Edit state
+	let editingId = $state<string | null>(null);
+	let editText = $state('');
+	let activeMenuId = $state<string | null>(null);
+	let menuPos = $state<{ x: number; y: number; align: 'left' | 'right' }>({ x: 0, y: 0, align: 'right' });
+
+	function startEdit(msg: ChatMessage) {
+		const dc = getDisplayContent(msg.content);
+		editingId = msg.id;
+		editText = dc.text;
+		activeMenuId = null;
+	}
+
+	function cancelEdit() {
+		editingId = null;
+		editText = '';
+	}
+
+	function saveEdit(id: string) {
+		const trimmed = editText.trim();
+		if (!trimmed) return;
+		editingId = null;
+		editText = '';
+		onresend(id, trimmed, model);
+	}
+
+	function handleResend(msg: ChatMessage) {
+		const dc = getDisplayContent(msg.content);
+		activeMenuId = null;
+		onresend(msg.id, dc.text, model);
+	}
+
+	function handleDelete(id: string) {
+		activeMenuId = null;
+		ondelete(id);
+	}
+
+	function copyText(content: string) {
+		navigator.clipboard.writeText(content);
+		activeMenuId = null;
+	}
+
+	function openMenu(id: string, e: MouseEvent, align: 'left' | 'right') {
+		if (activeMenuId === id) { activeMenuId = null; return; }
+		const btn = e.currentTarget as HTMLElement;
+		const rect = btn.getBoundingClientRect();
+		menuPos = { x: align === 'right' ? rect.right : rect.left, y: rect.top, align };
+		activeMenuId = id;
+	}
+
+	function menuStyle(): string {
+		const s = `top:${menuPos.y}px;transform:translateY(-100%) translateY(-6px);`;
+		if (menuPos.align === 'right') {
+			return s + `right:${(typeof window !== 'undefined' ? window.innerWidth : 0) - menuPos.x}px;`;
+		}
+		return s + `left:${menuPos.x}px;`;
+	}
 
 	/** Compress image to max 512px and JPEG 0.6 quality for vision API */
 	async function compressImageForChat(file: File): Promise<string> {
@@ -231,51 +291,85 @@
 
 			{#each messages as msg}
 				{#if msg.role !== 'system'}
-					<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
+					<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'} group/msg relative">
 						<div
 							class="max-w-[85%] rounded-2xl px-3.5 py-2.5 {msg.role === 'user'
 								? 'bg-accent text-white rounded-br-md'
 								: 'bg-warm rounded-bl-md'}"
 						>
 							{#if msg.role === 'user'}
-								{@const displayContent = getDisplayContent(msg.content)}
-								{#if displayContent.attachments.length > 0}
-									<div class="flex flex-wrap gap-1 mb-1.5">
-										{#each displayContent.attachments as att}
-											<span class="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px]">
-												{#if att.isImage}
-													<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="10" height="10" rx="1" /><circle cx="4" cy="4" r="1" /><path d="M1 8l3-3 2 2 2-2 3 3" /></svg>
-												{:else}
-													<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1H3a1 1 0 00-1 1v8a1 1 0 001 1h6a1 1 0 001-1V4L7 1z" /><path d="M7 1v3h3" /></svg>
-												{/if}
-												{att.name}
-											</span>
-										{/each}
+								{#if editingId === msg.id}
+									<!-- Inline edit mode -->
+									<div class="space-y-2">
+										<textarea
+											class="w-full bg-white/20 rounded-lg px-2.5 py-2 text-sm text-white placeholder:text-white/40 outline-none resize-none min-h-[60px]"
+											bind:value={editText}
+											onkeydown={(e) => {
+												if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(msg.id); }
+												if (e.key === 'Escape') cancelEdit();
+											}}
+										></textarea>
+										<div class="flex gap-1.5 justify-end">
+											<button class="text-[11px] px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/70" onclick={cancelEdit}>Cancel</button>
+											<button class="text-[11px] px-2 py-1 rounded bg-white/25 hover:bg-white/35 text-white font-medium" onclick={() => saveEdit(msg.id)}>Save</button>
+										</div>
 									</div>
+								{:else}
+									{@const displayContent = getDisplayContent(msg.content)}
+									{#if displayContent.attachments.length > 0}
+										<div class="flex flex-wrap gap-1 mb-1.5">
+											{#each displayContent.attachments as att}
+												<span class="inline-flex items-center gap-1 bg-white/15 rounded px-1.5 py-0.5 text-[10px]">
+													{#if att.isImage}
+														<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="10" height="10" rx="1" /><circle cx="4" cy="4" r="1" /><path d="M1 8l3-3 2 2 2-2 3 3" /></svg>
+													{:else}
+														<svg class="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 1H3a1 1 0 00-1 1v8a1 1 0 001 1h6a1 1 0 001-1V4L7 1z" /><path d="M7 1v3h3" /></svg>
+													{/if}
+													{att.name}
+												</span>
+											{/each}
+										</div>
+									{/if}
+									<p class="font-body text-sm whitespace-pre-wrap leading-relaxed">
+										{displayContent.text}
+									</p>
 								{/if}
-								<p class="font-body text-sm whitespace-pre-wrap leading-relaxed">
-									{displayContent.text}
-								</p>
 							{:else}
 								<div class="prose-chat font-body text-sm leading-relaxed">
 									{@html renderMarkdown(msg.content)}
 								</div>
 							{/if}
-							{#if msg.role === 'assistant'}
-								<div class="flex items-center gap-2 mt-2 pt-1.5 border-t border-border/30">
+
+							<!-- Action bar for each message -->
+							{#if editingId !== msg.id}
+								<div class="flex items-center gap-1 mt-1.5 pt-1.5 border-t
+									{msg.role === 'user' ? 'border-white/15' : 'border-border/30'}">
+									{#if msg.role === 'assistant'}
+										<button
+											class="font-ui text-[11px] text-muted hover:text-accent-dark flex items-center gap-1"
+											onclick={() => {
+												const question = getQuestionForAnswer(msg);
+												const journalContent = question
+													? `Q: ${question}\n\n${msg.content}`
+													: msg.content;
+												onpin(journalContent);
+												onclose();
+											}}
+										>
+											<svg class="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="3" x2="7" y2="11" /><line x1="3" y1="7" x2="11" y2="7" /></svg>
+											Journal
+										</button>
+									{/if}
+
+									<div class="flex-1"></div>
+
+									<!-- ··· Menu button -->
 									<button
-										class="font-ui text-[11px] text-muted hover:text-accent-dark flex items-center gap-1"
-										onclick={() => {
-											const question = getQuestionForAnswer(msg);
-											const journalContent = question
-												? `Q: ${question}\n\n${msg.content}`
-												: msg.content;
-											onpin(journalContent);
-											onclose();
-										}}
+										class="w-6 h-6 flex items-center justify-center rounded
+											{msg.role === 'user' ? 'text-white/50 hover:text-white hover:bg-white/10' : 'text-muted/50 hover:text-muted hover:bg-warm'} transition-colors"
+										onclick={(e) => openMenu(msg.id, e, msg.role === 'user' ? 'right' : 'left')}
 									>
-										<svg class="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="3" x2="7" y2="11" /><line x1="3" y1="7" x2="11" y2="7" /></svg>
-										Add to journal
+										<svg class="w-3.5 h-3.5" viewBox="0 0 14 14" fill="currentColor"><circle cx="3" cy="7" r="1.2" /><circle cx="7" cy="7" r="1.2" /><circle cx="11" cy="7" r="1.2" /></svg>
 									</button>
 								</div>
 							{/if}
@@ -284,8 +378,44 @@
 				{/if}
 			{/each}
 
+			<!-- Fixed-position context menu (rendered outside scroll container) -->
+		</div>
+
+		{#if activeMenuId}
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="fixed inset-0 z-[60]" onclick={() => (activeMenuId = null)}></div>
+			{@const activeMsg = messages.find(m => m.id === activeMenuId)}
+			{#if activeMsg}
+				<div class="fixed z-[61] bg-cream border border-border rounded-lg shadow-lg py-1 min-w-[150px]"
+					style={menuStyle()}>
+					{#if activeMsg.role === 'user'}
+						<button class="w-full text-left px-3 py-2 text-[13px] text-ink hover:bg-warm flex items-center gap-2.5" onclick={() => startEdit(activeMsg)}>
+							<svg class="w-4 h-4 text-muted" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l2 2-7 7H3v-2l7-7z" /></svg>
+							Edit & Resend
+						</button>
+						<button class="w-full text-left px-3 py-2 text-[13px] text-ink hover:bg-warm flex items-center gap-2.5" onclick={() => handleResend(activeMsg)}>
+							<svg class="w-4 h-4 text-muted" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7a6 6 0 0111.2-3M13 2v3h-3" /><path d="M13 7A6 6 0 011.8 10M1 12V9h3" /></svg>
+							Resend
+						</button>
+					{/if}
+					<button class="w-full text-left px-3 py-2 text-[13px] text-ink hover:bg-warm flex items-center gap-2.5" onclick={() => copyText(activeMsg.role === 'user' ? getDisplayContent(activeMsg.content).text : activeMsg.content)}>
+						<svg class="w-4 h-4 text-muted" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1" /><path d="M9 5V2a1 1 0 00-1-1H2a1 1 0 00-1 1v6a1 1 0 001 1h3" /></svg>
+						Copy
+					</button>
+					<div class="border-t border-border/50 my-0.5"></div>
+					<button class="w-full text-left px-3 py-2 text-[13px] text-red-ink hover:bg-red-ink/5 flex items-center gap-2.5" onclick={() => handleDelete(activeMsg.id)}>
+						<svg class="w-4 h-4" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h10M5 4V2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5V4M11 4v7.5a1 1 0 01-1 1H4a1 1 0 01-1-1V4" /></svg>
+						Delete
+					</button>
+				</div>
+			{/if}
+		{/if}
+
+		<!-- Sending indicator -->
+		<div class="px-4 pb-1">
 			{#if sending}
-				<div class="flex justify-start">
+				<div class="flex justify-start py-2">
 					<div class="bg-warm rounded-2xl rounded-bl-md px-4 py-3">
 						<div class="flex gap-1.5">
 							<span class="w-2 h-2 rounded-full bg-muted animate-bounce"></span>
