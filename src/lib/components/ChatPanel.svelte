@@ -26,14 +26,12 @@
 	// Edit state
 	let editingId = $state<string | null>(null);
 	let editText = $state('');
-	let activeMenuId = $state<string | null>(null);
-	let menuPos = $state<{ x: number; y: number; align: 'left' | 'right' }>({ x: 0, y: 0, align: 'right' });
+	let copiedId = $state<string | null>(null);
 
 	function startEdit(msg: ChatMessage) {
 		const dc = getDisplayContent(msg.content);
 		editingId = msg.id;
 		editText = dc.text;
-		activeMenuId = null;
 	}
 
 	function cancelEdit() {
@@ -51,34 +49,13 @@
 
 	function handleResend(msg: ChatMessage) {
 		const dc = getDisplayContent(msg.content);
-		activeMenuId = null;
 		onresend(msg.id, dc.text, model);
 	}
 
-	function handleDelete(id: string) {
-		activeMenuId = null;
-		ondelete(id);
-	}
-
-	function copyText(content: string) {
+	function copyText(id: string, content: string) {
 		navigator.clipboard.writeText(content);
-		activeMenuId = null;
-	}
-
-	function openMenu(id: string, e: MouseEvent, align: 'left' | 'right') {
-		if (activeMenuId === id) { activeMenuId = null; return; }
-		const btn = e.currentTarget as HTMLElement;
-		const rect = btn.getBoundingClientRect();
-		menuPos = { x: align === 'right' ? rect.right : rect.left, y: rect.top, align };
-		activeMenuId = id;
-	}
-
-	function menuStyle(): string {
-		const s = `top:${menuPos.y}px;transform:translateY(-100%) translateY(-6px);`;
-		if (menuPos.align === 'right') {
-			return s + `right:${(typeof window !== 'undefined' ? window.innerWidth : 0) - menuPos.x}px;`;
-		}
-		return s + `left:${menuPos.x}px;`;
+		copiedId = id;
+		setTimeout(() => { if (copiedId === id) copiedId = null; }, 1500);
 	}
 
 	/** Compress image to max 512px and JPEG 0.6 quality for vision API */
@@ -291,15 +268,41 @@
 
 			{#each messages as msg}
 				{#if msg.role !== 'system'}
-					<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'} group/msg relative">
+					<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'} group/msg items-end gap-1">
+						<!-- Action icons: LEFT side for user messages -->
+						{#if msg.role === 'user' && editingId !== msg.id}
+							<div class="flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity shrink-0 pb-1">
+								<button class="w-6 h-6 flex items-center justify-center rounded-md text-muted/30 hover:text-red-ink hover:bg-red-ink/5 transition-colors" title="Delete"
+									onclick={() => ondelete(msg.id)}>
+									<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h10M5 4V2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5V4M11 4v7.5a1 1 0 01-1 1H4a1 1 0 01-1-1V4" /></svg>
+								</button>
+								<button class="w-6 h-6 flex items-center justify-center rounded-md text-muted/30 hover:text-accent hover:bg-warm transition-colors" title="Copy"
+									onclick={() => copyText(msg.id, getDisplayContent(msg.content).text)}>
+									{#if copiedId === msg.id}
+										<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5l3 3 5-6" /></svg>
+									{:else}
+										<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1" /><path d="M9 5V2a1 1 0 00-1-1H2a1 1 0 00-1 1v6a1 1 0 001 1h3" /></svg>
+									{/if}
+								</button>
+								<button class="w-6 h-6 flex items-center justify-center rounded-md text-muted/30 hover:text-accent hover:bg-warm transition-colors" title="Resend"
+									onclick={() => handleResend(msg)}>
+									<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7a6 6 0 0111.2-3M13 2v3h-3" /><path d="M13 7A6 6 0 011.8 10M1 12V9h3" /></svg>
+								</button>
+								<button class="w-6 h-6 flex items-center justify-center rounded-md text-muted/30 hover:text-accent hover:bg-warm transition-colors" title="Edit & Resend"
+									onclick={() => startEdit(msg)}>
+									<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l2 2-7 7H3v-2l7-7z" /></svg>
+								</button>
+							</div>
+						{/if}
+
+						<!-- Message bubble -->
 						<div
-							class="max-w-[85%] rounded-2xl px-3.5 py-2.5 {msg.role === 'user'
+							class="max-w-[75%] rounded-2xl px-3.5 py-2.5 {msg.role === 'user'
 								? 'bg-accent text-white rounded-br-md'
 								: 'bg-warm rounded-bl-md'}"
 						>
 							{#if msg.role === 'user'}
 								{#if editingId === msg.id}
-									<!-- Inline edit mode -->
 									<div class="space-y-2">
 										<textarea
 											class="w-full bg-white/20 rounded-lg px-2.5 py-2 text-sm text-white placeholder:text-white/40 outline-none resize-none min-h-[60px]"
@@ -311,7 +314,7 @@
 										></textarea>
 										<div class="flex gap-1.5 justify-end">
 											<button class="text-[11px] px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-white/70" onclick={cancelEdit}>Cancel</button>
-											<button class="text-[11px] px-2 py-1 rounded bg-white/25 hover:bg-white/35 text-white font-medium" onclick={() => saveEdit(msg.id)}>Save</button>
+											<button class="text-[11px] px-2 py-1 rounded bg-white/25 hover:bg-white/35 text-white font-medium" onclick={() => saveEdit(msg.id)}>Save & Resend</button>
 										</div>
 									</div>
 								{:else}
@@ -339,78 +342,38 @@
 									{@html renderMarkdown(msg.content)}
 								</div>
 							{/if}
-
-							<!-- Action bar for each message -->
-							{#if editingId !== msg.id}
-								<div class="flex items-center gap-1 mt-1.5 pt-1.5 border-t
-									{msg.role === 'user' ? 'border-white/15' : 'border-border/30'}">
-									{#if msg.role === 'assistant'}
-										<button
-											class="font-ui text-[11px] text-muted hover:text-accent-dark flex items-center gap-1"
-											onclick={() => {
-												const question = getQuestionForAnswer(msg);
-												const journalContent = question
-													? `Q: ${question}\n\n${msg.content}`
-													: msg.content;
-												onpin(journalContent);
-												onclose();
-											}}
-										>
-											<svg class="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="3" x2="7" y2="11" /><line x1="3" y1="7" x2="11" y2="7" /></svg>
-											Journal
-										</button>
-									{/if}
-
-									<div class="flex-1"></div>
-
-									<!-- ··· Menu button -->
-									<button
-										class="w-6 h-6 flex items-center justify-center rounded
-											{msg.role === 'user' ? 'text-white/50 hover:text-white hover:bg-white/10' : 'text-muted/50 hover:text-muted hover:bg-warm'} transition-colors"
-										onclick={(e) => openMenu(msg.id, e, msg.role === 'user' ? 'right' : 'left')}
-									>
-										<svg class="w-3.5 h-3.5" viewBox="0 0 14 14" fill="currentColor"><circle cx="3" cy="7" r="1.2" /><circle cx="7" cy="7" r="1.2" /><circle cx="11" cy="7" r="1.2" /></svg>
-									</button>
-								</div>
-							{/if}
 						</div>
+
+						<!-- Action icons: RIGHT side for assistant messages -->
+						{#if msg.role === 'assistant' && editingId !== msg.id}
+							<div class="flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity shrink-0 pb-1">
+								<button class="w-6 h-6 flex items-center justify-center rounded-md text-muted/30 hover:text-accent hover:bg-warm transition-colors" title="Add to journal"
+									onclick={() => {
+										const question = getQuestionForAnswer(msg);
+										const journalContent = question ? `Q: ${question}\n\n${msg.content}` : msg.content;
+										onpin(journalContent);
+										onclose();
+									}}>
+									<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="3" x2="7" y2="11" /><line x1="3" y1="7" x2="11" y2="7" /></svg>
+								</button>
+								<button class="w-6 h-6 flex items-center justify-center rounded-md text-muted/30 hover:text-accent hover:bg-warm transition-colors" title="Copy"
+									onclick={() => copyText(msg.id, msg.content)}>
+									{#if copiedId === msg.id}
+										<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5l3 3 5-6" /></svg>
+									{:else}
+										<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1" /><path d="M9 5V2a1 1 0 00-1-1H2a1 1 0 00-1 1v6a1 1 0 001 1h3" /></svg>
+									{/if}
+								</button>
+								<button class="w-6 h-6 flex items-center justify-center rounded-md text-muted/30 hover:text-red-ink hover:bg-red-ink/5 transition-colors" title="Delete"
+									onclick={() => ondelete(msg.id)}>
+									<svg class="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h10M5 4V2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5V4M11 4v7.5a1 1 0 01-1 1H4a1 1 0 01-1-1V4" /></svg>
+								</button>
+							</div>
+						{/if}
 					</div>
 				{/if}
 			{/each}
-
-			<!-- Fixed-position context menu (rendered outside scroll container) -->
 		</div>
-
-		{#if activeMenuId}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="fixed inset-0 z-[60]" onclick={() => (activeMenuId = null)}></div>
-			{@const activeMsg = messages.find(m => m.id === activeMenuId)}
-			{#if activeMsg}
-				<div class="fixed z-[61] bg-cream border border-border rounded-lg shadow-lg py-1 min-w-[150px]"
-					style={menuStyle()}>
-					{#if activeMsg.role === 'user'}
-						<button class="w-full text-left px-3 py-2 text-[13px] text-ink hover:bg-warm flex items-center gap-2.5" onclick={() => startEdit(activeMsg)}>
-							<svg class="w-4 h-4 text-muted" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2l2 2-7 7H3v-2l7-7z" /></svg>
-							Edit & Resend
-						</button>
-						<button class="w-full text-left px-3 py-2 text-[13px] text-ink hover:bg-warm flex items-center gap-2.5" onclick={() => handleResend(activeMsg)}>
-							<svg class="w-4 h-4 text-muted" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7a6 6 0 0111.2-3M13 2v3h-3" /><path d="M13 7A6 6 0 011.8 10M1 12V9h3" /></svg>
-							Resend
-						</button>
-					{/if}
-					<button class="w-full text-left px-3 py-2 text-[13px] text-ink hover:bg-warm flex items-center gap-2.5" onclick={() => copyText(activeMsg.role === 'user' ? getDisplayContent(activeMsg.content).text : activeMsg.content)}>
-						<svg class="w-4 h-4 text-muted" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="8" height="8" rx="1" /><path d="M9 5V2a1 1 0 00-1-1H2a1 1 0 00-1 1v6a1 1 0 001 1h3" /></svg>
-						Copy
-					</button>
-					<div class="border-t border-border/50 my-0.5"></div>
-					<button class="w-full text-left px-3 py-2 text-[13px] text-red-ink hover:bg-red-ink/5 flex items-center gap-2.5" onclick={() => handleDelete(activeMsg.id)}>
-						<svg class="w-4 h-4" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h10M5 4V2.5a.5.5 0 01.5-.5h3a.5.5 0 01.5.5V4M11 4v7.5a1 1 0 01-1 1H4a1 1 0 01-1-1V4" /></svg>
-						Delete
-					</button>
-				</div>
-			{/if}
-		{/if}
 
 		<!-- Sending indicator -->
 		<div class="px-4 pb-1">
