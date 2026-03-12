@@ -311,8 +311,8 @@
 	function applyTemplate(templateName: string) {
 		const tmpl = REACTION_TEMPLATES.find(t => t.name === templateName);
 		if (!tmpl) return;
-		newCondAbove = tmpl.conditions.join(', ');
-		newCondBelow = tmpl.solvent || '';
+		newCondAbove = tmpl.conditions_above;
+		newCondBelow = tmpl.conditions_below;
 	}
 
 	/* ── Generate Experimental ─────────────────────────────────────── */
@@ -350,6 +350,7 @@
 			const data = await res.json() as any;
 			if (data.text && oninsertblock) {
 				oninsertblock('text', data.text, { source: 'writeup', reaction_id: reaction.id });
+				onclose();
 			}
 		} catch (e) {
 			console.error('Writeup generation failed:', e);

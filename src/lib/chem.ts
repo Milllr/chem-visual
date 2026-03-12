@@ -393,6 +393,14 @@ export function formatCharacterization(compound: {
 	const parts: string[] = [];
 	parts.push(`**${compound.name}**`);
 
+	// Formula / MW
+	if (compound.formula) {
+		const fmtF = formatFormula(compound.formula);
+		parts.push(compound.molar_mass
+			? `${fmtF} (MW ${compound.molar_mass.toFixed(2)})`
+			: fmtF);
+	}
+
 	// Melting point
 	if (compound.melting_point) {
 		parts.push(`mp ${compound.melting_point} °C`);
@@ -405,40 +413,49 @@ export function formatCharacterization(compound: {
 
 	// NMR data
 	try {
-		const nmr = JSON.parse(compound.nmr_data || '{}');
+		const nmr = typeof compound.nmr_data === 'string'
+			? JSON.parse(compound.nmr_data || '{}')
+			: (compound.nmr_data || {});
 		const nucleiOrder = ['1H', '13C', '19F', '31P', '11B', '15N', '29Si', '7Li'];
 		const nucleiLabels: Record<string, string> = {
 			'1H': '¹H NMR', '13C': '¹³C NMR', '19F': '¹⁹F NMR', '31P': '³¹P NMR',
 			'11B': '¹¹B NMR', '15N': '¹⁵N NMR', '29Si': '²⁹Si NMR', '7Li': '⁷Li NMR'
 		};
-		for (const nid of nucleiOrder) {
+		// Also check any nuclei keys present in the data that aren't in our order list
+		const allKeys = new Set([...nucleiOrder, ...Object.keys(nmr)]);
+		for (const nid of allKeys) {
 			const entry = nmr[nid];
-			if (entry?.have && entry.peaks) {
-				const label = nucleiLabels[nid] || nid;
+			if (!entry || !entry.have) continue;
+			const label = nucleiLabels[nid] || nid;
+			if (entry.peaks) {
 				const solvent = entry.solvent || 'CDCl₃';
 				const freq = entry.frequency || '400';
-				let line = `${label} (${freq} MHz, ${solvent}) δ ${entry.peaks}`;
-				parts.push(line);
-			} else if (entry?.have && entry.notes) {
-				const label = nucleiLabels[nid] || nid;
+				parts.push(`${label} (${freq} MHz, ${solvent}) δ ${entry.peaks}`);
+			} else if (entry.notes) {
 				parts.push(`${label}: ${entry.notes}`);
+			} else {
+				parts.push(`${label}: acquired`);
 			}
 		}
 	} catch { /* ignore */ }
 
 	// IR
-	if (compound.ir_data && compound.ir_notes) {
-		parts.push(`IR (neat) ν̃ ${compound.ir_notes} cm⁻¹`);
+	if (compound.ir_data) {
+		parts.push(compound.ir_notes
+			? `IR (neat) ν̃ ${compound.ir_notes} cm⁻¹`
+			: 'IR: acquired');
 	}
 
 	// Mass spec
-	if (compound.mass_spec && compound.mass_spec_type) {
+	if (compound.mass_spec) {
 		const exactMass = calcExactMass(compound.formula);
 		if (compound.mass_spec_type === 'HRMS' && exactMass > 0) {
 			const mH = Math.round((exactMass + 1.0072764522) * 10000) / 10000;
 			parts.push(`HRMS (ESI) m/z: [M+H]⁺ calcd for ${formatFormula(compound.formula)} ${mH}, found ${compound.mass_spec_notes || '—'}`);
-		} else {
+		} else if (compound.mass_spec_type) {
 			parts.push(`MS (${compound.mass_spec_type}): ${compound.mass_spec_notes || '—'}`);
+		} else {
+			parts.push(`MS: ${compound.mass_spec_notes || 'acquired'}`);
 		}
 	}
 
