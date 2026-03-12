@@ -7,6 +7,7 @@
 		onscannotes: () => void;
 		onaddmolecule: () => void;
 		onaddtable: () => void;
+		onaddtlc: () => void;
 		ondraw: () => void;
 		ontoggleChat: () => void;
 		onopenlibrary: () => void;
@@ -14,7 +15,7 @@
 		libraryOpen?: boolean;
 	}
 
-	let { onaddtext, onuploadimage, onuploaddocument, onuploaddata, onscannotes, onaddmolecule, onaddtable, ondraw, ontoggleChat, onopenlibrary, chatOpen = false, libraryOpen = false }: Props = $props();
+	let { onaddtext, onuploadimage, onuploaddocument, onuploaddata, onscannotes, onaddmolecule, onaddtable, onaddtlc, ondraw, ontoggleChat, onopenlibrary, chatOpen = false, libraryOpen = false }: Props = $props();
 	let showUploadMenu = $state(false);
 </script>
 
@@ -105,6 +106,22 @@
 				<line x1="12.5" y1="7" x2="12.5" y2="17" />
 			</svg>
 			<span class="text-[10px] text-muted">Table</span>
+		</button>
+
+		<!-- TLC -->
+		<button
+			class="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md
+				   active:bg-warm transition-colors min-w-[44px]"
+			onclick={() => { showUploadMenu = false; onaddtlc(); }}
+		>
+			<svg class="w-5 h-5 text-muted" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+				<rect x="4" y="2" width="12" height="16" rx="1" />
+				<line x1="4" y1="5" x2="16" y2="5" stroke-dasharray="2 2" />
+				<line x1="4" y1="15" x2="16" y2="15" stroke-dasharray="2 2" />
+				<circle cx="8" cy="12" r="1.5" fill="currentColor" opacity="0.4" />
+				<circle cx="12" cy="9" r="1.5" fill="currentColor" opacity="0.4" />
+			</svg>
+			<span class="text-[10px] text-muted">TLC</span>
 		</button>
 
 		<!-- Library -->

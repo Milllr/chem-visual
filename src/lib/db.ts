@@ -30,7 +30,7 @@ export interface Page {
 export interface Block {
 	id: string;
 	page_id: string;
-	type: 'text' | 'image' | 'molecule' | 'chat_response' | 'document' | 'data' | 'reaction_step';
+	type: 'text' | 'image' | 'molecule' | 'chat_response' | 'document' | 'data' | 'reaction_step' | 'tlc';
 	content: string | null;
 	image_url: string | null;
 	metadata: string | null;
@@ -118,7 +118,7 @@ export interface ChemSpecies {
 	density?: number;    // g/mL (from reagent library)
 	stoich: number;      // stoichiometric coefficient
 	amount: number;      // practical quantity (user-entered)
-	unit: 'mol' | 'g' | 'mL';  // unit for amount
+	unit: 'mol' | 'mmol' | 'g' | 'mg' | 'mL' | 'µL';  // unit for amount
 }
 
 export interface ReactionStep {
@@ -149,11 +149,36 @@ export interface Compound {
 	ir_notes: string;
 	crystal: number;
 	crystal_notes: string;
+	melting_point: string;
+	optical_rotation: string;
 	notes: string;
 	metadata: string;
 	sort_order: number;
 	created: string;
 	updated: string;
+}
+
+export interface Timer {
+	id: string;
+	notebook_id: string;
+	label: string;
+	duration_seconds: number;
+	started_at: string;
+	page_id: string | null;
+	created: string;
+}
+
+export interface TlcSpot {
+	rf: number;
+	label: string;
+	appearance: string;
+}
+
+export interface TlcData {
+	solvent_system: string;
+	stain: string;
+	spots: TlcSpot[];
+	notes: string;
 }
 
 export const NMR_NUCLEI = [

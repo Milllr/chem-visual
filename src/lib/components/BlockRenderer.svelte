@@ -448,6 +448,60 @@
 				{/if}
 			</div>
 		{/if}
+
+	{:else if block.type === 'tlc'}
+		<!-- ── TLC Plate ────────────────────────────────────────── -->
+		{@const tlcData = (() => { try { return JSON.parse(block.content || '{}'); } catch { return {}; } })()}
+		{@const spots = (tlcData.spots || []) as Array<{ lane: number; rf: number; label?: string; color?: string }>}
+		{@const lanes = (tlcData.lanes || ['SM', 'Rxn']) as string[]}
+		{@const solvent = tlcData.solvent || ''}
+		{@const stain = tlcData.stain || 'UV'}
+		<div class="flex flex-col items-center gap-2">
+			<!-- Solvent / stain label -->
+			<div class="flex items-center gap-3 text-[10px] text-muted">
+				{#if solvent}<span class="font-mono">{solvent}</span>{/if}
+				<span>{stain}</span>
+			</div>
+			<!-- Plate -->
+			<div class="relative bg-gradient-to-b from-warm/60 to-warm/30 border border-border rounded-lg overflow-hidden"
+				 style="width: {Math.max(lanes.length * 44, 100)}px; height: 160px;">
+				<!-- Solvent front (dashed line near top) -->
+				<div class="absolute left-2 right-2 top-3 border-t border-dashed border-muted/30"></div>
+				<!-- Origin line (dashed line near bottom) -->
+				<div class="absolute left-2 right-2 bottom-3 border-t border-dashed border-muted/30"></div>
+				<!-- Lane labels at bottom -->
+				{#each lanes as lane, lIdx}
+					{@const laneX = ((lIdx + 0.5) / lanes.length) * 100}
+					<span class="absolute bottom-[-18px] text-[9px] text-muted font-mono"
+						style="left: {laneX}%; transform: translateX(-50%)">{lane}</span>
+				{/each}
+				<!-- Spots -->
+				{#each spots as spot}
+					{@const laneX = ((spot.lane + 0.5) / lanes.length) * 100}
+					{@const spotY = 100 - (spot.rf * 80 + 10)}
+					<div class="absolute w-4 h-4 rounded-full border border-ink/20 -translate-x-1/2 -translate-y-1/2"
+						style="left: {laneX}%; top: {spotY}%; background: {spot.color || 'rgba(80,60,30,0.4)'};"
+						title="Rf {spot.rf.toFixed(2)}{spot.label ? ` — ${spot.label}` : ''}">
+					</div>
+				{/each}
+			</div>
+			<!-- Lane labels below plate -->
+			<div class="flex justify-around w-full mt-1" style="max-width: {Math.max(lanes.length * 44, 100)}px;">
+				{#each lanes as lane}
+					<span class="text-[9px] text-muted font-mono">{lane}</span>
+				{/each}
+			</div>
+			<!-- Rf values -->
+			{#if spots.length > 0}
+				<div class="flex flex-wrap gap-2 mt-1">
+					{#each spots as spot}
+						<span class="text-[10px] font-mono text-muted bg-warm/40 px-1.5 py-0.5 rounded">
+							{lanes[spot.lane] || '?'}: Rf {spot.rf.toFixed(2)}{spot.label ? ` (${spot.label})` : ''}
+						</span>
+					{/each}
+				</div>
+			{/if}
+		</div>
 	{/if}
 	</div>
 </div>

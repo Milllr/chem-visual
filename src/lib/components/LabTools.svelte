@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { calcExactMass, calcAdducts, calcIHD, nitrogenRuleCheck, SOLVENT_TABLE, calcColumn, formatFormula } from '$lib/chem';
+
 	let activeCalc = $state<string>('dilution');
 
 	// --- Dilution Calculator (C₁V₁ = C₂V₂) ---
@@ -136,13 +138,45 @@
 		}
 	});
 
+	// --- HRMS / Exact Mass Calculator ---
+	let hrmsFormula = $state('');
+	let hrmsExactMass = $derived(calcExactMass(hrmsFormula));
+	let hrmsAdducts = $derived(calcAdducts(hrmsFormula));
+	let hrmsIHD = $derived(calcIHD(hrmsFormula));
+	let hrmsNitrogen = $derived(nitrogenRuleCheck(hrmsFormula));
+	let hrmsMode = $state<'pos' | 'neg'>('pos');
+
+	// --- Solvent Reference ---
+	let solventSearch = $state('');
+	let solventSort = $state<'name' | 'bp' | 'polarity'>('polarity');
+	let filteredSolvents = $derived(() => {
+		let list = SOLVENT_TABLE;
+		if (solventSearch.trim()) {
+			const q = solventSearch.toLowerCase();
+			list = list.filter(s => s.name.toLowerCase().includes(q) || s.formula.toLowerCase().includes(q));
+		}
+		return [...list].sort((a, b) => {
+			if (solventSort === 'bp') return a.bp - b.bp;
+			if (solventSort === 'polarity') return a.polarity - b.polarity;
+			return a.name.localeCompare(b.name);
+		});
+	});
+
+	// --- Column Calculator ---
+	let colCrude = $state(0);
+	let colRatio = $state(50);
+	let colResult = $derived(colCrude > 0 ? calcColumn(colCrude, colRatio) : null);
+
 	const calcs = [
 		{ id: 'dilution', label: 'Dilution' },
 		{ id: 'molarity', label: 'Molarity' },
 		{ id: 'yield', label: '% Yield' },
 		{ id: 'convert', label: 'Units' },
 		{ id: 'equiv', label: 'Equiv' },
-		{ id: 'gas', label: 'Gas Law' }
+		{ id: 'gas', label: 'Gas Law' },
+		{ id: 'hrms', label: 'HRMS' },
+		{ id: 'solvents', label: 'Solvents' },
+		{ id: 'column', label: 'Column' },
 	];
 
 	function fmtNum(n: number): string {
@@ -473,6 +507,131 @@
 						</span>
 					</p>
 				</div>
+			</div>
+
+		{:else if activeCalc === 'hrms'}
+			<!-- HRMS / Exact Mass Calculator -->
+			<div class="px-4 py-3 bg-warm/30 border-b border-border">
+				<h3 class="text-sm font-medium text-ink">HRMS Calculator</h3>
+				<p class="text-[10px] text-muted mt-0.5">Exact mass, adducts, IHD & nitrogen rule</p>
+			</div>
+			<div class="p-4 space-y-3">
+				<div class="flex items-center gap-2">
+					<label class="text-xs text-muted w-16">Formula</label>
+					<input type="text" bind:value={hrmsFormula} placeholder="C₁₅H₂₂N₂O₃"
+						class="flex-1 bg-warm/50 border border-border rounded-lg px-3 py-1.5 text-sm font-mono outline-none placeholder:text-muted/30" />
+				</div>
+
+				{#if hrmsFormula && hrmsExactMass > 0}
+					<!-- Exact mass -->
+					<div class="rounded-lg bg-accent/5 border border-accent/20 px-3 py-2">
+						<p class="text-[10px] text-muted uppercase tracking-wide">Monoisotopic Mass</p>
+						<p class="text-lg font-mono font-semibold text-ink">{hrmsExactMass.toFixed(4)} <span class="text-xs text-muted font-normal">Da</span></p>
+						{#if hrmsIHD !== null}
+							<p class="text-[10px] text-muted mt-0.5">IHD = {hrmsIHD} · {hrmsNitrogen.message}</p>
+						{/if}
+					</div>
+
+					<!-- Mode toggle -->
+					<div class="flex gap-1">
+						<button class="flex-1 text-[10px] py-1 rounded-lg border transition-colors
+							{hrmsMode === 'pos' ? 'bg-blue-ink text-cream border-blue-ink' : 'border-border text-muted'}"
+							onclick={() => (hrmsMode = 'pos')}>Positive [+]</button>
+						<button class="flex-1 text-[10px] py-1 rounded-lg border transition-colors
+							{hrmsMode === 'neg' ? 'bg-red-ink text-cream border-red-ink' : 'border-border text-muted'}"
+							onclick={() => (hrmsMode = 'neg')}>Negative [−]</button>
+					</div>
+
+					<!-- Adducts table -->
+					<div class="space-y-1">
+						{#each hrmsAdducts.filter(a => a.mode === hrmsMode) as adduct}
+							<div class="flex items-center justify-between px-2.5 py-1.5 bg-warm/20 rounded-lg">
+								<span class="text-xs font-medium text-ink">{adduct.label}</span>
+								<span class="text-sm font-mono font-semibold text-ink">{adduct.mz.toFixed(4)}</span>
+							</div>
+						{/each}
+					</div>
+				{:else if hrmsFormula}
+					<p class="text-xs text-muted/50 text-center py-2">Enter a valid molecular formula</p>
+				{/if}
+			</div>
+
+		{:else if activeCalc === 'solvents'}
+			<!-- Solvent Reference -->
+			<div class="px-4 py-3 bg-warm/30 border-b border-border">
+				<h3 class="text-sm font-medium text-ink">Solvent Reference</h3>
+				<p class="text-[10px] text-muted mt-0.5">BP, density, polarity, rotavap, waste & drying</p>
+			</div>
+			<div class="p-3 space-y-2">
+				<div class="flex gap-2">
+					<input type="text" bind:value={solventSearch} placeholder="Search…"
+						class="flex-1 bg-warm/50 border border-border rounded-lg px-2.5 py-1.5 text-xs outline-none placeholder:text-muted/30" />
+					<select bind:value={solventSort} class="bg-warm/50 border border-border rounded-lg px-1.5 py-1.5 text-[10px] outline-none">
+						<option value="polarity">Polarity</option>
+						<option value="bp">Boiling Pt</option>
+						<option value="name">Name</option>
+					</select>
+				</div>
+
+				<div class="max-h-[360px] overflow-y-auto space-y-1 -mx-1 px-1">
+					{#each filteredSolvents() as s}
+						<div class="rounded-lg bg-warm/20 px-2.5 py-2">
+							<div class="flex items-center justify-between">
+								<span class="text-xs font-medium text-ink">{s.name}</span>
+								<span class="text-[10px] font-mono text-muted">{s.formula}</span>
+							</div>
+							<div class="grid grid-cols-3 gap-x-3 gap-y-0.5 mt-1 text-[10px]">
+								<div><span class="text-muted">bp:</span> <span class="text-ink">{s.bp}°C</span></div>
+								<div><span class="text-muted">d:</span> <span class="text-ink">{s.density}</span></div>
+								<div><span class="text-muted">P:</span> <span class="text-ink">{s.polarity}</span></div>
+								<div><span class="text-muted">rotavap:</span> <span class="text-ink">{s.rotavapPressure} mbar</span></div>
+								<div class="col-span-2"><span class="text-muted">dry:</span> <span class="text-ink">{s.dryingAgent}</span></div>
+							</div>
+							<div class="flex items-center gap-2 mt-1">
+								<span class="text-[9px] px-1.5 py-0.5 rounded
+									{s.wasteCategory === 'halogenated' ? 'bg-red-ink/10 text-red-ink' : s.wasteCategory === 'aqueous' ? 'bg-blue-ink/10 text-blue-ink' : 'bg-accent/10 text-accent'}">{s.wasteCategory}</span>
+								{#if s.miscibleWater}
+									<span class="text-[9px] text-muted">water-miscible</span>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+
+		{:else if activeCalc === 'column'}
+			<!-- Column Calculator -->
+			<div class="px-4 py-3 bg-warm/30 border-b border-border">
+				<h3 class="text-sm font-medium text-ink">Column Calculator</h3>
+				<p class="text-[10px] text-muted mt-0.5">Silica, diameter, fractions & solvent estimate</p>
+			</div>
+			<div class="p-4 space-y-3">
+				<div class="flex items-center gap-2">
+					<label class="text-xs text-muted w-20">Crude mass</label>
+					<input type="number" step="any" bind:value={colCrude}
+						class="flex-1 bg-warm/50 border border-border rounded-lg px-3 py-1.5 text-sm font-mono outline-none" />
+					<span class="text-[10px] text-muted w-4">g</span>
+				</div>
+				<div class="flex items-center gap-2">
+					<label class="text-xs text-muted w-20">Silica ratio</label>
+					<input type="number" step="5" min="20" max="100" bind:value={colRatio}
+						class="flex-1 bg-warm/50 border border-border rounded-lg px-3 py-1.5 text-sm font-mono outline-none" />
+					<span class="text-[10px] text-muted w-4">×</span>
+				</div>
+
+				{#if colResult}
+					<div class="rounded-lg bg-accent/5 border border-accent/20 px-3 py-2 space-y-1.5">
+						<div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+							<div><span class="text-muted">Silica:</span> <span class="font-mono font-semibold text-ink">{colResult.silicaMass} g</span></div>
+							<div><span class="text-muted">Diameter:</span> <span class="font-mono font-semibold text-ink">{colResult.diameter} cm</span></div>
+							<div><span class="text-muted">Height:</span> <span class="font-mono font-semibold text-ink">{colResult.columnHeight} cm</span></div>
+							<div><span class="text-muted">Dead vol:</span> <span class="font-mono font-semibold text-ink">{colResult.deadVolume} mL</span></div>
+							<div><span class="text-muted">Fractions:</span> <span class="font-mono font-semibold text-ink">~{colResult.fractionSize} mL</span></div>
+							<div><span class="text-muted">Total solvent:</span> <span class="font-mono font-semibold text-ink">~{colResult.totalSolvent} mL</span></div>
+						</div>
+						<p class="text-[10px] text-muted mt-1">Using {colRatio}× silica-to-crude ratio. Adjust for difficulty of separation.</p>
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
