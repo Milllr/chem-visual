@@ -14,6 +14,7 @@
 	import PageTabs from '$lib/components/PageTabs.svelte';
 	import TableEditor from '$lib/components/TableEditor.svelte';
 	import ReagentLibrary from '$lib/components/ReagentLibrary.svelte';
+	import ReactionTimers from '$lib/components/ReactionTimers.svelte';
 	import SpotlightSearch from '$lib/components/SpotlightSearch.svelte';
 	import { fly } from 'svelte/transition';
 
@@ -59,6 +60,20 @@
 	let scanProgress = $state('');
 	let scanStepCount = $state(0);
 	let scanStepTotal = $state(0);
+
+	// Reliable scroll to a newly created block
+	async function scrollToBlock(blockId: string) {
+		await tick();
+		requestAnimationFrame(() => {
+			setTimeout(() => {
+				const el = document.getElementById(`block-${blockId}`);
+				if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			}, 50);
+		});
+	}
+
+	// Reaction timers
+	let timers = $state<Array<{ id: string; label: string; duration: number; remaining: number; running: boolean; startedAt?: number }>>([]);
 
 	// Page switching
 	async function selectPage(pageId: string) {
@@ -113,17 +128,60 @@
 		if (res.ok) {
 			const block: Block = await res.json();
 			blocks = [...blocks, block];
-			// Scroll to new block after render
-			requestAnimationFrame(() => {
-				const el = document.getElementById(`block-${block.id}`);
-				el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			});
+			await scrollToBlock(block.id);
 		}
 	}
 
 	// Add image block
 	async function addImageBlock() {
 		fileInput?.click();
+	}
+
+	// Add TLC block
+	async function addTlcBlock() {
+		const tlcData = {
+			lanes: ['SM', 'Rxn'],
+			spots: [
+				{ lane: 0, rf: 0.3, label: 'starting material' },
+				{ lane: 1, rf: 0.3, label: 'SM' },
+				{ lane: 1, rf: 0.6, label: 'product' }
+			],
+			solvent: '',
+			stain: 'UV'
+		};
+		const res = await fetch('/api/blocks', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				page_id: currentPageId,
+				type: 'tlc',
+				content: JSON.stringify(tlcData)
+			})
+		});
+		if (res.ok) {
+			const block: Block = await res.json();
+			blocks = [...blocks, block];
+			await scrollToBlock(block.id);
+		}
+	}
+
+	// Timer helpers
+	function removeTimer(id: string) {
+		timers = timers.filter(t => t.id !== id);
+	}
+
+	function toggleTimer(id: string) {
+		timers = timers.map(t => {
+			if (t.id !== id) return t;
+			if (t.running) {
+				// Pause — freeze remaining
+				const elapsed = t.startedAt ? (Date.now() - t.startedAt) / 1000 : 0;
+				return { ...t, running: false, remaining: Math.max(0, t.remaining - elapsed), startedAt: undefined };
+			} else {
+				// Start/resume
+				return { ...t, running: true, startedAt: Date.now() };
+			}
+		});
 	}
 
 	async function handleFileUpload(e: Event) {
@@ -159,6 +217,7 @@
 			if (res.ok) {
 				const block: Block = await res.json();
 				blocks = [...blocks, block];
+				await scrollToBlock(block.id);
 			}
 		} catch (err) {
 			console.error('Image upload error:', err);
@@ -196,6 +255,7 @@
 				const block: Block = await blockRes.json();
 				blocks = [...blocks, block];
 				moleculeInputOpen = false;
+				await scrollToBlock(block.id);
 			}
 		} catch (err) {
 			console.error('Molecule error:', err);
@@ -317,6 +377,7 @@
 		if (res.ok) {
 			const block: Block = await res.json();
 			blocks = [...blocks, block];
+			await scrollToBlock(block.id);
 		}
 	}
 
@@ -381,6 +442,7 @@
 				if (res.ok) {
 					const block: Block = await res.json();
 					blocks = [...blocks, block];
+					await scrollToBlock(block.id);
 				}
 			}
 		} catch (err) {
@@ -431,6 +493,7 @@
 				if (res.ok) {
 					const block: Block = await res.json();
 					blocks = [...blocks, block];
+					await scrollToBlock(block.id);
 				}
 			}
 		} catch (err) {
@@ -533,6 +596,7 @@
 			if (res.ok) {
 				const block: Block = await res.json();
 				blocks = [...blocks, block];
+				await scrollToBlock(block.id);
 			}
 		} catch (err) {
 			console.error('Document upload error:', err);
@@ -560,6 +624,7 @@
 			if (res.ok) {
 				const block: Block = await res.json();
 				blocks = [...blocks, block];
+				await scrollToBlock(block.id);
 			}
 		} catch (err) {
 			console.error('Data upload error:', err);
@@ -723,6 +788,7 @@
 					if (res.ok) {
 						const block: Block = await res.json();
 						blocks = [...blocks, block];
+						await scrollToBlock(block.id);
 					}
 				} catch (err) {
 					console.error('Paste image error:', err);
@@ -743,6 +809,7 @@
 			if (res.ok) {
 				const block: Block = await res.json();
 				blocks = [...blocks, block];
+				await scrollToBlock(block.id);
 			}
 		}
 	}
@@ -896,6 +963,7 @@
 		onscannotes={() => scanInput?.click()}
 		onaddmolecule={() => (moleculeInputOpen = true)}
 		onaddtable={() => (tableMode = true)}
+		onaddtlc={addTlcBlock}
 		ondraw={() => (drawingMode = true)}
 		ontoggleChat={() => (chatOpen = !chatOpen)}
 		onopenlibrary={() => (libraryOpen = !libraryOpen)}
@@ -977,11 +1045,16 @@
 			const block = await res.json();
 			blocks = [...blocks, block];
 			libraryOpen = false;
-			await tick();
-			const el = document.getElementById(`block-${block.id}`);
-			if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			await scrollToBlock(block.id);
 		}
 	}}
+/>
+
+<!-- Reaction timers -->
+<ReactionTimers
+	{timers}
+	onremove={removeTimer}
+	ontoggle={toggleTimer}
 />
 
 <!-- Scanning overlay -->

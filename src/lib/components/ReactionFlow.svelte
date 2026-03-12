@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Reagent, Reaction, ReactionStep, ChemSpecies, Compound } from '$lib/db';
 	import { generateId } from '$lib/db';
-	import { calcMW, formatFormula } from '$lib/chem';
+	import { calcMW, formatFormula, REACTION_TEMPLATES } from '$lib/chem';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 	import StoichCalculator from './StoichCalculator.svelte';
 	import { fly } from 'svelte/transition';
@@ -130,6 +130,7 @@
 	let pickerSource = $state<'reagent' | 'compound' | 'custom'>('reagent');
 	let customName = $state('');
 	let customFormula = $state('');
+	let generatingWriteup = $state(false);
 
 	function resetForm() {
 		newReactants = []; newProducts = [];
@@ -139,21 +140,31 @@
 
 	/* ── Unit conversion ───────────────────────────────────────────── */
 
-	function convertAmount(sp: ChemSpecies, newUnit: 'mol' | 'g' | 'mL'): number {
+	type ChemUnit = 'mol' | 'mmol' | 'g' | 'mg' | 'mL' | 'µL';
+
+	function convertAmount(sp: ChemSpecies, newUnit: ChemUnit): number {
 		const { amount, unit, mw, density } = sp;
 		if (amount === 0 || unit === newUnit) return amount;
 		// Convert to grams first
 		let grams: number;
 		switch (unit) {
 			case 'g': grams = amount; break;
+			case 'mg': grams = amount / 1000; break;
 			case 'mol': grams = amount * (mw || 0); break;
+			case 'mmol': grams = (amount / 1000) * (mw || 0); break;
 			case 'mL': grams = density ? amount * density : amount; break;
+			case 'µL': grams = density ? (amount / 1000) * density : amount / 1000; break;
+			default: grams = amount;
 		}
 		// Convert from grams to target
 		switch (newUnit) {
 			case 'g': return grams;
+			case 'mg': return grams * 1000;
 			case 'mol': return mw > 0 ? grams / mw : 0;
+			case 'mmol': return mw > 0 ? (grams / mw) * 1000 : 0;
 			case 'mL': return density ? grams / density : 0;
+			case 'µL': return density ? (grams / density) * 1000 : 0;
+			default: return grams;
 		}
 	}
 
@@ -215,8 +226,8 @@
 	function cycleNewUnit(target: 'reactant' | 'product', idx: number) {
 		const list = target === 'reactant' ? newReactants : newProducts;
 		const sp = list[idx];
-		const units: ('mol' | 'g' | 'mL')[] = sp.density ? ['mol', 'g', 'mL'] : ['mol', 'g'];
-		const curIdx = units.indexOf(sp.unit);
+		const units: ChemUnit[] = sp.density ? ['mol', 'mmol', 'g', 'mg', 'mL', 'µL'] : ['mol', 'mmol', 'g', 'mg'];
+		const curIdx = units.indexOf(sp.unit as ChemUnit);
 		const newUnit = units[(curIdx + 1) % units.length];
 		const newAmt = parseFloat(convertAmount(sp, newUnit).toPrecision(4));
 		const updated = list.map((s, i) => i === idx ? { ...s, unit: newUnit, amount: newAmt } : s);
@@ -241,8 +252,8 @@
 			if (i !== stepIdx) return s;
 			const list = [...s[side]];
 			const sp = list[speciesIdx];
-			const units: ('mol' | 'g' | 'mL')[] = sp.density ? ['mol', 'g', 'mL'] : ['mol', 'g'];
-			const curIdx = units.indexOf(sp.unit);
+			const units: ChemUnit[] = sp.density ? ['mol', 'mmol', 'g', 'mg', 'mL', 'µL'] : ['mol', 'mmol', 'g', 'mg'];
+			const curIdx = units.indexOf(sp.unit as ChemUnit);
 			const newUnit = units[(curIdx + 1) % units.length];
 			const newAmt = parseFloat(convertAmount(sp, newUnit).toPrecision(4));
 			list[speciesIdx] = { ...sp, unit: newUnit, amount: newAmt };
@@ -293,6 +304,59 @@
 
 	function handleNameBlur() {
 		if (reactionName !== reaction.name) persistSteps();
+	}
+
+	/* ── Named Reaction Templates ──────────────────────────────────── */
+
+	function applyTemplate(templateName: string) {
+		const tmpl = REACTION_TEMPLATES.find(t => t.name === templateName);
+		if (!tmpl) return;
+		newCondAbove = tmpl.conditions_above;
+		newCondBelow = tmpl.conditions_below;
+	}
+
+	/* ── Generate Experimental ─────────────────────────────────────── */
+
+	async function generateExperimental() {
+		if (generatingWriteup) return;
+		generatingWriteup = true;
+		try {
+			const reactionData = {
+				name: reactionName,
+				steps: steps.map((s, i) => ({
+					step: i + 1,
+					reactants: s.reactants.map(resolveSpecies).map(sp => ({
+						name: sp.name, formula: sp.formula, mw: sp.mw,
+						amount: sp.amount, unit: sp.unit
+					})),
+					products: s.products.map(resolveSpecies).map(sp => ({
+						name: sp.name, formula: sp.formula, mw: sp.mw,
+						amount: sp.amount, unit: sp.unit
+					})),
+					conditions_above: s.conditions_above,
+					conditions_below: s.conditions_below,
+					notes: s.notes
+				})),
+				actual_yield: actualYield,
+				theoretical_yield: theoreticalYield,
+				yield_percent: yieldPercent
+			};
+			const res = await fetch('/api/writeup', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ reaction: reactionData, compounds })
+			});
+			if (!res.ok) throw new Error('Failed to generate');
+			const data = await res.json() as any;
+			if (data.text && oninsertblock) {
+				oninsertblock('text', data.text, { source: 'writeup', reaction_id: reaction.id });
+				onclose();
+			}
+		} catch (e) {
+			console.error('Writeup generation failed:', e);
+		} finally {
+			generatingWriteup = false;
+		}
 	}
 
 	/* ── Helpers ────────────────────────────────────────────────────── */
@@ -378,7 +442,7 @@
 		return { label: 'custom', cls: 'text-muted/60 bg-warm' };
 	}
 
-	const unitLabel: Record<string, string> = { mol: 'mol', g: 'g', mL: 'mL' };
+	const unitLabel: Record<string, string> = { mol: 'mol', mmol: 'mmol', g: 'g', mg: 'mg', mL: 'mL', 'µL': 'µL' };
 </script>
 
 <!-- ── Species picker snippet ─────────────────────────────────────── -->
@@ -705,14 +769,43 @@
 					</div>
 				</div>
 			</div>
+
+			<!-- Generate Experimental -->
+			<div class="px-3 pb-3">
+				<button
+					class="w-full text-sm py-2.5 rounded-lg border border-accent/30 bg-accent/5 text-accent
+						   hover:bg-accent/15 transition-colors flex items-center justify-center gap-2
+						   disabled:opacity-40 disabled:cursor-wait"
+					onclick={generateExperimental}
+					disabled={generatingWriteup || !oninsertblock}
+				>
+					{#if generatingWriteup}
+						<svg class="w-4 h-4 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6" stroke-dasharray="24 12" /></svg>
+						Generating…
+					{:else}
+						<svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 13h10M3 3l5 8 5-8" /></svg>
+						Generate Experimental Procedure
+					{/if}
+				</button>
+			</div>
 		{/if}
 
 		<!-- ── Add step form ─────────────────────────────────────────── -->
 		<div class="px-3 pb-6">
 			{#if showAddStep}
 				<div class="rounded-xl border border-border bg-card/50 overflow-hidden" transition:fly={{ y: 10, duration: 200 }}>
-					<div class="px-4 py-3 bg-warm/30 border-b border-border">
+					<div class="px-4 py-3 bg-warm/30 border-b border-border flex items-center justify-between">
 						<h3 class="text-base font-medium text-ink">New Reaction Step</h3>
+						<select
+							class="bg-cream border border-border rounded-lg px-2 py-1 text-xs outline-none text-muted"
+							value=""
+							onchange={(e) => { applyTemplate(e.currentTarget.value); e.currentTarget.value = ''; }}
+						>
+							<option value="" disabled>Template…</option>
+							{#each REACTION_TEMPLATES as tmpl}
+								<option value={tmpl.name}>{tmpl.name}</option>
+							{/each}
+						</select>
 					</div>
 
 					<div class="p-4 space-y-5">

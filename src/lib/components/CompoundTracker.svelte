@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Compound, Reaction, Reagent } from '$lib/db';
 	import { NMR_NUCLEI } from '$lib/db';
-	import { calcMW } from '$lib/chem';
+	import { calcMW, calcExactMass, calcAdducts, calcIHD, formatCharacterization, formatFormula, isSmiles } from '$lib/chem';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 	import { fly } from 'svelte/transition';
 
@@ -18,6 +18,8 @@
 	let expandedId = $state<string | null>(null);
 	let showAddForm = $state(false);
 	let addNucleusOpen = $state<string | null>(null);
+	let copiedId = $state<string | null>(null);
+	let resolvingName = $state<string | null>(null);
 
 	// New compound form — only name, formula, and optional reaction link
 	let newName = $state('');
@@ -28,7 +30,7 @@
 	// Auto-calculated MW from formula
 	let newMwCalc = $derived(calcMW(newFormula));
 
-	function parseNmr(data: string): Record<string, { have: boolean; notes: string }> {
+	function parseNmr(data: string): Record<string, { have: boolean; notes: string; peaks?: string; solvent?: string; frequency?: string }> {
 		try { return JSON.parse(data) || {}; } catch { return {}; }
 	}
 
@@ -73,14 +75,70 @@
 		oncompoundschange(compounds.map(c => c.id === compound.id ? compound : c));
 	}
 
+	function copyCharacterization(compound: Compound) {
+		const text = formatCharacterization(compound);
+		navigator.clipboard.writeText(text);
+		copiedId = compound.id;
+		setTimeout(() => (copiedId = null), 2000);
+	}
+
+	async function resolveNameFromSmiles(compound: Compound) {
+		if (!compound.smiles || resolvingName) return;
+		resolvingName = compound.id;
+		try {
+			const res = await fetch('/api/smiles', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ input: compound.smiles, mode: 'to_name' })
+			});
+			if (res.ok) {
+				const data = await res.json();
+				if (data.name) {
+					saveCompound({ ...compound, name: data.name });
+				}
+			}
+		} catch { /* best effort */ }
+		resolvingName = null;
+	}
+
+	function updateNmrField(compound: Compound, nucleusId: string, field: string, value: string) {
+		const nmr = parseNmr(compound.nmr_data);
+		if (!nmr[nucleusId]) nmr[nucleusId] = { have: false, notes: '' };
+		(nmr[nucleusId] as any)[field] = value;
+		saveCompound({ ...compound, nmr_data: JSON.stringify(nmr) });
+	}
+
 	async function createCompound() {
 		if (creatingCompound) return;
 		creatingCompound = true;
 
-		const mw = newMwCalc;
-		// Try to resolve SMILES from compound name
+		let formula = newFormula.trim();
 		let smiles = '';
-		if (newName.trim()) {
+		let mw = newMwCalc;
+
+		// Check if formula field contains a SMILES string
+		if (formula && isSmiles(formula)) {
+			// User entered SMILES in formula field — swap it
+			smiles = formula;
+			formula = ''; // Will try to compute from SMILES below
+			mw = 0;
+			// Try to get formula from SMILES via API
+			try {
+				const res = await fetch('/api/smiles', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ input: smiles, mode: 'to_formula' })
+				});
+				if (res.ok) {
+					const data = await res.json();
+					if (data.formula) {
+						formula = data.formula;
+						mw = calcMW(formula);
+					}
+				}
+			} catch { /* best-effort */ }
+		} else if (newName.trim() && !smiles) {
+			// Try to resolve SMILES from compound name (only if formula isn't SMILES)
 			try {
 				const res = await fetch('/api/smiles', {
 					method: 'POST',
@@ -89,7 +147,10 @@
 				});
 				if (res.ok) {
 					const data = await res.json();
-					if (data.smiles) smiles = data.smiles;
+					// Only use if it looks like a valid SMILES (not just the name echoed back)
+					if (data.smiles && isSmiles(data.smiles)) {
+						smiles = data.smiles;
+					}
 				}
 			} catch { /* SMILES resolution is best-effort */ }
 		}
@@ -103,7 +164,7 @@
 			body: JSON.stringify({
 				notebook_id: notebookId,
 				name: newName || 'Untitled Compound',
-				formula: newFormula,
+				formula,
 				molar_mass: mw,
 				smiles,
 				reaction_id: newReactionId || null,
@@ -220,6 +281,12 @@
 							{#if compound.crystal}
 								<span class="px-1 py-0.5 rounded bg-accent/8 text-[9px] font-mono text-accent">XRD</span>
 							{/if}
+							{#if compound.melting_point}
+								<span class="px-1 py-0.5 rounded bg-accent/8 text-[9px] font-mono text-accent">mp</span>
+							{/if}
+							{#if compound.optical_rotation}
+								<span class="px-1 py-0.5 rounded bg-accent/8 text-[9px] font-mono text-accent">[α]</span>
+							{/if}
 						</div>
 					</div>
 					<svg
@@ -239,9 +306,19 @@
 						<div class="grid grid-cols-2 gap-2">
 							<div>
 								<label class="text-[10px] text-muted block mb-0.5">Name</label>
-								<input type="text" value={compound.name}
-									class="w-full bg-warm/50 border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-muted"
-									onchange={(e) => saveCompound({ ...compound, name: e.currentTarget.value })} />
+								<div class="flex gap-1">
+									<input type="text" value={compound.name}
+										class="flex-1 bg-warm/50 border border-border rounded-lg px-2 py-1.5 text-xs outline-none focus:border-muted"
+										onchange={(e) => saveCompound({ ...compound, name: e.currentTarget.value })} />
+									{#if compound.smiles && (!compound.name || compound.name === 'Untitled Compound')}
+										<button
+											class="px-1.5 rounded-lg border border-border text-[9px] text-accent hover:bg-accent/10 transition-colors shrink-0"
+											class:opacity-50={resolvingName === compound.id}
+											onclick={() => resolveNameFromSmiles(compound)}
+											title="Get IUPAC name from SMILES"
+										>{resolvingName === compound.id ? '…' : 'ID'}</button>
+									{/if}
+								</div>
 							</div>
 							<div>
 								<label class="text-[10px] text-muted block mb-0.5">Formula</label>
@@ -273,12 +350,58 @@
 								</select>
 							</div>
 						</div>
+
+						<!-- Melting point & Optical rotation -->
+						<div class="grid grid-cols-2 gap-2">
+							<div>
+								<label class="text-[10px] text-muted block mb-0.5">Melting Point (°C)</label>
+								<input type="text" value={compound.melting_point || ''}
+									placeholder="e.g. 120-122"
+									class="w-full bg-warm/50 border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none placeholder:text-muted/30"
+									onchange={(e) => saveCompound({ ...compound, melting_point: e.currentTarget.value })} />
+							</div>
+							<div>
+								<label class="text-[10px] text-muted block mb-0.5">[α]<sub>D</sub></label>
+								<input type="text" value={compound.optical_rotation || ''}
+									placeholder="e.g. +25.4 (c 1.0, CHCl₃)"
+									class="w-full bg-warm/50 border border-border rounded-lg px-2 py-1.5 text-xs font-mono outline-none placeholder:text-muted/30"
+									onchange={(e) => saveCompound({ ...compound, optical_rotation: e.currentTarget.value })} />
+							</div>
+						</div>
+
 						{#if compound.smiles}
 							<div>
 								<label class="text-[10px] text-muted block mb-0.5">SMILES</label>
 								<p class="text-[10px] font-mono text-muted/80 bg-warm/30 rounded px-2 py-1 break-all">{compound.smiles}</p>
 							</div>
 						{/if}
+
+						<!-- Exact Mass & Adducts -->
+						{#if compound.formula}
+							{@const exactMass = calcExactMass(compound.formula)}
+							{@const ihd = calcIHD(compound.formula)}
+							{@const adducts = calcAdducts(compound.formula)}
+							{#if exactMass > 0}
+								<div class="rounded-lg bg-blue-ink/5 border border-blue-ink/15 px-2.5 py-2">
+									<div class="flex items-center justify-between">
+										<span class="text-[10px] text-muted uppercase tracking-wide">Exact Mass</span>
+										<span class="text-xs font-mono font-semibold text-ink">{exactMass.toFixed(4)} Da</span>
+									</div>
+									{#if ihd !== null}
+										<p class="text-[10px] text-muted mt-0.5">IHD = {ihd}</p>
+									{/if}
+									<div class="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1.5">
+										{#each adducts.slice(0, 4) as a}
+											<div class="flex justify-between text-[10px]">
+												<span class="text-muted">{a.label}</span>
+												<span class="font-mono text-ink">{a.mz.toFixed(4)}</span>
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						{/if}
+
 						{#if compound.reaction_id}
 							{@const rxYield = getLinkedYield(compound)}
 							{#if rxYield > 0}
@@ -325,37 +448,69 @@
 						{#if nucleiKeys.length === 0}
 							<p class="text-[10px] text-muted/40 text-center py-2">No nuclei tracked. Click "+ Add Nucleus" to start.</p>
 						{:else}
-							<div class="space-y-2">
+							<div class="space-y-3">
 								{#each nucleiKeys as nid}
 									{@const entry = nmr[nid]}
 									{@const nucInfo = NMR_NUCLEI.find(n => n.id === nid)}
-									<div class="flex items-center gap-2 group">
-										<button
-											class="w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors"
-											class:bg-blue-ink={entry.have}
-											class:border-blue-ink={entry.have}
-											class:text-white={entry.have}
-											class:border-border={!entry.have}
-											onclick={() => toggleNmr(compound, nid)}
-										>
-											{#if entry.have}
-												<svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 8L7 12L13 4" /></svg>
+									<div class="group">
+										<div class="flex items-center gap-2 mb-1">
+											<button
+												class="w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-colors"
+												class:bg-blue-ink={entry.have}
+												class:border-blue-ink={entry.have}
+												class:text-white={entry.have}
+												class:border-border={!entry.have}
+												onclick={() => toggleNmr(compound, nid)}
+											>
+												{#if entry.have}
+													<svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 8L7 12L13 4" /></svg>
+												{/if}
+											</button>
+											<span class="text-xs font-mono font-medium text-ink w-10 shrink-0">{nucInfo?.label || nid}</span>
+											<div class="flex gap-1 flex-1">
+												<input type="text" placeholder="freq" value={entry.frequency || ''}
+													class="w-14 bg-cream/60 border border-border/50 rounded px-1.5 py-0.5 text-[10px] font-mono outline-none placeholder:text-muted/30 text-center"
+													onchange={(e) => updateNmrField(compound, nid, 'frequency', e.currentTarget.value)} />
+												<select value={entry.solvent || ''}
+													class="bg-cream/60 border border-border/50 rounded px-1 py-0.5 text-[10px] outline-none flex-1"
+													onchange={(e) => updateNmrField(compound, nid, 'solvent', e.currentTarget.value)}>
+													<option value="">Solvent…</option>
+													<option value="CDCl₃">CDCl₃</option>
+													<option value="DMSO-d₆">DMSO-d₆</option>
+													<option value="D₂O">D₂O</option>
+													<option value="CD₃OD">CD₃OD</option>
+													<option value="C₆D₆">C₆D₆</option>
+													<option value="CD₂Cl₂">CD₂Cl₂</option>
+													<option value="Acetone-d₆">Acetone-d₆</option>
+													<option value="THF-d₈">THF-d₈</option>
+												</select>
+											</div>
+											<button
+												class="opacity-0 group-hover:opacity-100 text-muted hover:text-red-ink transition-all"
+												onclick={() => removeNucleus(compound, nid)}
+											>
+												<svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4L4 12M4 4L12 12" /></svg>
+											</button>
+										</div>
+										<!-- Peak data entry -->
+										<div class="ml-7">
+											<input
+												type="text"
+												placeholder="δ peaks (e.g. 7.26, 4.12, 3.80, 1.25)"
+												value={entry.peaks || ''}
+												class="w-full bg-cream/60 border border-border/50 rounded px-2 py-1 text-[10px] font-mono outline-none focus:border-muted placeholder:text-muted/30"
+												onchange={(e) => updateNmrField(compound, nid, 'peaks', e.currentTarget.value)}
+											/>
+											{#if entry.notes || entry.have}
+												<input
+													type="text"
+													placeholder="Assignment notes…"
+													value={entry.notes || ''}
+													class="w-full mt-1 bg-cream/60 border border-border/50 rounded px-2 py-0.5 text-[10px] outline-none focus:border-muted placeholder:text-muted/30"
+													onchange={(e) => updateNmrNotes(compound, nid, e.currentTarget.value)}
+												/>
 											{/if}
-										</button>
-										<span class="text-xs font-mono font-medium text-ink w-10 shrink-0">{nucInfo?.label || nid}</span>
-										<input
-											type="text"
-											placeholder="Notes (solvent, freq...)"
-											value={entry.notes}
-											class="flex-1 bg-cream/60 border border-border/50 rounded px-2 py-1 text-[10px] outline-none focus:border-muted placeholder:text-muted/30"
-											onchange={(e) => updateNmrNotes(compound, nid, e.currentTarget.value)}
-										/>
-										<button
-											class="opacity-0 group-hover:opacity-100 text-muted hover:text-red-ink transition-all"
-											onclick={() => removeNucleus(compound, nid)}
-										>
-											<svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4L4 12M4 4L12 12" /></svg>
-										</button>
+										</div>
 									</div>
 								{/each}
 							</div>
@@ -466,12 +621,24 @@
 					</div>
 
 					<!-- Actions -->
-					<div class="flex justify-end">
+					<div class="flex items-center justify-between">
+						<button
+							class="text-[10px] px-3 py-1.5 rounded-lg border border-accent/30 text-accent hover:bg-accent/10 transition-colors flex items-center gap-1.5"
+							onclick={() => copyCharacterization(compound)}
+						>
+							{#if copiedId === compound.id}
+								<svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 8L7 12L13 4" /></svg>
+								Copied!
+							{:else}
+								<svg class="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="8" height="10" rx="1.5"/><path d="M6 4V2.5A1.5 1.5 0 0 1 7.5 1h5A1.5 1.5 0 0 1 14 2.5v7a1.5 1.5 0 0 1-1.5 1.5H11" /></svg>
+								Format for Paper
+							{/if}
+						</button>
 						<button
 							class="text-xs text-red-ink hover:bg-red-ink/10 px-3 py-1.5 rounded-lg transition-colors"
 							onclick={() => deleteCompound(compound.id)}
 						>
-							Delete Compound
+							Delete
 						</button>
 					</div>
 				</div>

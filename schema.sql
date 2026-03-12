@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS page (
 CREATE TABLE IF NOT EXISTS block (
   id          TEXT PRIMARY KEY,
   page_id     TEXT NOT NULL REFERENCES page(id) ON DELETE CASCADE,
-  type        TEXT NOT NULL CHECK(type IN ('text', 'image', 'molecule', 'chat_response', 'document', 'data', 'reaction_step')),
+  type        TEXT NOT NULL CHECK(type IN ('text', 'image', 'molecule', 'chat_response', 'document', 'data', 'reaction_step', 'tlc')),
   content     TEXT,
   image_url   TEXT,
   metadata    TEXT,
@@ -126,6 +126,8 @@ CREATE TABLE IF NOT EXISTS compound (
   ir_notes          TEXT DEFAULT '',
   crystal           INTEGER DEFAULT 0,
   crystal_notes     TEXT DEFAULT '',
+  melting_point     TEXT DEFAULT '',
+  optical_rotation  TEXT DEFAULT '',
   notes             TEXT DEFAULT '',
   metadata          TEXT DEFAULT '{}',
   sort_order        INTEGER DEFAULT 0,
@@ -135,3 +137,15 @@ CREATE TABLE IF NOT EXISTS compound (
 
 CREATE INDEX IF NOT EXISTS idx_compound_notebook ON compound(notebook_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_compound_reaction ON compound(reaction_id);
+
+CREATE TABLE IF NOT EXISTS timer (
+  id          TEXT PRIMARY KEY,
+  notebook_id TEXT NOT NULL REFERENCES notebook(id) ON DELETE CASCADE,
+  page_id     TEXT REFERENCES page(id) ON DELETE SET NULL,
+  label       TEXT NOT NULL DEFAULT '',
+  duration_seconds INTEGER NOT NULL DEFAULT 0,
+  started_at  TEXT,
+  created     TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_timer_notebook ON timer(notebook_id);

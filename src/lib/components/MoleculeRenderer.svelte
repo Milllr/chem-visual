@@ -156,7 +156,7 @@
 	}
 </script>
 
-<div class="relative">
+<div class="relative overflow-hidden">
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -168,13 +168,21 @@
 
 	{#if error}
 		<div class="absolute inset-0 flex items-center justify-center">
-			<span class="font-ui text-sm text-red-ink bg-cream/80 px-3 py-1 rounded">{error}</span>
+			{#if width <= 60 || height <= 60}
+				<span class="text-red-ink/50 text-xs" title={error}>⚠</span>
+			{:else}
+				<span class="font-ui text-sm text-red-ink bg-cream/80 px-3 py-1 rounded">{error}</span>
+			{/if}
 		</div>
 	{/if}
 
 	{#if !loaded && !error}
 		<div class="absolute inset-0 flex items-center justify-center">
-			<span class="font-ui text-sm text-muted animate-pulse">Drawing...</span>
+			{#if width <= 60 || height <= 60}
+				<span class="text-muted/40 text-xs animate-pulse">…</span>
+			{:else}
+				<span class="font-ui text-sm text-muted animate-pulse">Drawing...</span>
+			{/if}
 		</div>
 	{/if}
 </div>

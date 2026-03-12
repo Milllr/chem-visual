@@ -26,7 +26,9 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 		notebook_id, name, smiles, formula, molar_mass,
 		reaction_id, actual_yield, theoretical_yield,
 		nmr_data, mass_spec, mass_spec_type, mass_spec_notes,
-		ir_data, ir_notes, crystal, crystal_notes, notes, metadata
+		ir_data, ir_notes, crystal, crystal_notes,
+		melting_point, optical_rotation,
+		notes, metadata
 	} = body;
 
 	if (!notebook_id) return json({ error: 'notebook_id required' }, { status: 400 });
@@ -47,8 +49,10 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			`INSERT INTO compound (id, notebook_id, name, smiles, formula, molar_mass,
 			 reaction_id, actual_yield, theoretical_yield, yield_percent,
 			 nmr_data, mass_spec, mass_spec_type, mass_spec_notes,
-			 ir_data, ir_notes, crystal, crystal_notes, notes, metadata, sort_order)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			 ir_data, ir_notes, crystal, crystal_notes,
+			 melting_point, optical_rotation,
+			 notes, metadata, sort_order)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		)
 		.bind(
 			id, notebook_id, name || 'Untitled Compound',
@@ -58,6 +62,7 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 			mass_spec ? 1 : 0, mass_spec_type || '', mass_spec_notes || '',
 			ir_data ? 1 : 0, ir_notes || '',
 			crystal ? 1 : 0, crystal_notes || '',
+			melting_point || '', optical_rotation || '',
 			notes || '',
 			typeof metadata === 'string' ? metadata : JSON.stringify(metadata || {}),
 			sortOrder

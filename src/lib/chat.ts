@@ -207,3 +207,114 @@ export async function formulaToSmiles(formula: string, apiKey: string): Promise<
 	if (!content) throw new Error('Empty SMILES response');
 	return content.trim();
 }
+
+export async function smilesToName(smiles: string, apiKey: string): Promise<string> {
+	const res = await fetch('https://api.openai.com/v1/chat/completions', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${apiKey}`
+		},
+		body: JSON.stringify({
+			model: 'gpt-5-mini',
+			messages: [
+				{
+					role: 'developer',
+					content:
+						'Convert the SMILES string to the IUPAC systematic name. Return ONLY the IUPAC name. If the compound has a well-known common name, return that instead (e.g. "acetone" instead of "propan-2-one"). Do not include any explanation.'
+				},
+				{ role: 'user', content: smiles }
+			],
+			max_completion_tokens: 4096
+		})
+	});
+	if (!res.ok) throw new Error('Name conversion failed');
+	const data: any = await res.json();
+	const content = data.choices?.[0]?.message?.content;
+	if (!content) throw new Error('Empty name response');
+	return content.trim();
+}
+
+export async function smilesToFormula(smiles: string, apiKey: string): Promise<string> {
+	const res = await fetch('https://api.openai.com/v1/chat/completions', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${apiKey}`
+		},
+		body: JSON.stringify({
+			model: 'gpt-5-mini',
+			messages: [
+				{
+					role: 'developer',
+					content:
+						'Convert the SMILES string to a molecular formula. Return ONLY the molecular formula in Hill notation (C first, then H, then other elements alphabetically). For example: C6H12O6 or C2H5NO2. Do not include any explanation, just the formula.'
+				},
+				{ role: 'user', content: smiles }
+			],
+			max_completion_tokens: 256
+		})
+	});
+	if (!res.ok) throw new Error('Formula conversion failed');
+	const data: any = await res.json();
+	const content = data.choices?.[0]?.message?.content;
+	if (!content) throw new Error('Empty formula response');
+	return content.trim();
+}
+
+export async function generateExperimental(
+	reactionData: {
+		name: string;
+		steps: any[];
+		actual_yield: number;
+		theoretical_yield: number;
+		yield_percent: number;
+	},
+	compounds: { name: string; formula: string; molar_mass: number }[],
+	apiKey: string
+): Promise<string> {
+	const stepsDesc = reactionData.steps.map((step: any, i: number) => {
+		const reactants = (step.reactants || []).map((s: any) =>
+			`${s.name || s.formula} (${s.amount} ${s.unit}, MW ${s.mw})`
+		).join(', ');
+		const products = (step.products || []).map((s: any) =>
+			`${s.name || s.formula}`
+		).join(', ');
+		const cond = [step.conditions_above, step.conditions_below].filter(Boolean).join(', ');
+		return `Step ${i + 1}: ${reactants} → ${products} [${cond}]${step.notes ? ` (${step.notes})` : ''}`;
+	}).join('\n');
+
+	const prompt = `Write a journal-style experimental procedure for this reaction:
+
+Reaction: ${reactionData.name}
+${stepsDesc}
+${reactionData.yield_percent > 0 ? `Yield: ${reactionData.actual_yield}g (${reactionData.yield_percent.toFixed(1)}%)` : ''}
+
+Write in the third-person past tense, typical of organic chemistry journal publications (e.g. JACS, Org. Lett.).
+Include: setup, reagent addition order, temperature, time, workup, purification, and product isolation.
+Use precise language. Format amounts with proper units (mg, g, mmol, mL, equiv).
+Do not include characterization data — just the synthetic procedure.
+Keep it concise but complete.`;
+
+	const res = await fetch('https://api.openai.com/v1/chat/completions', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${apiKey}`
+		},
+		body: JSON.stringify({
+			model: 'gpt-5.1',
+			messages: [
+				{
+					role: 'developer',
+					content: 'You are an expert synthetic chemist writing experimental procedures for publication in high-impact journals. Write precise, professional experimental sections.'
+				},
+				{ role: 'user', content: prompt }
+			],
+			max_completion_tokens: 4096
+		})
+	});
+	if (!res.ok) throw new Error('Experimental generation failed');
+	const data: any = await res.json();
+	return data.choices?.[0]?.message?.content?.trim() || '';
+}
