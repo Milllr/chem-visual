@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { lookupSmiles } from '$lib/smiles';
-import { formulaToSmiles, smilesToName } from '$lib/chat';
+import { formulaToSmiles, smilesToName, smilesToFormula } from '$lib/chat';
 
 export const POST: RequestHandler = async ({ request, platform }) => {
 	const db = platform?.env?.DB;
@@ -12,6 +12,19 @@ export const POST: RequestHandler = async ({ request, platform }) => {
 	if (!input) return json({ error: 'input required' }, { status: 400 });
 
 	const trimmed = input.trim();
+
+	// SMILES → molecular formula mode
+	if (mode === 'to_formula') {
+		const apiKey = platform?.env?.OPENAI_API_KEY;
+		if (!apiKey) return json({ error: 'API key not configured' }, { status: 500 });
+
+		try {
+			const formula = await smilesToFormula(trimmed, apiKey);
+			return json({ formula, source: 'ai' });
+		} catch {
+			return json({ error: 'Could not convert to formula' }, { status: 422 });
+		}
+	}
 
 	// Reverse mode: SMILES → IUPAC name
 	if (mode === 'to_name') {

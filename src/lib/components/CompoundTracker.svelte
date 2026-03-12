@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Compound, Reaction, Reagent } from '$lib/db';
 	import { NMR_NUCLEI } from '$lib/db';
-	import { calcMW, calcExactMass, calcAdducts, calcIHD, formatCharacterization, formatFormula } from '$lib/chem';
+	import { calcMW, calcExactMass, calcAdducts, calcIHD, formatCharacterization, formatFormula, isSmiles } from '$lib/chem';
 	import MoleculeRenderer from './MoleculeRenderer.svelte';
 	import { fly } from 'svelte/transition';
 
@@ -112,10 +112,33 @@
 		if (creatingCompound) return;
 		creatingCompound = true;
 
-		const mw = newMwCalc;
-		// Try to resolve SMILES from compound name
+		let formula = newFormula.trim();
 		let smiles = '';
-		if (newName.trim()) {
+		let mw = newMwCalc;
+
+		// Check if formula field contains a SMILES string
+		if (formula && isSmiles(formula)) {
+			// User entered SMILES in formula field — swap it
+			smiles = formula;
+			formula = ''; // Will try to compute from SMILES below
+			mw = 0;
+			// Try to get formula from SMILES via API
+			try {
+				const res = await fetch('/api/smiles', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ input: smiles, mode: 'to_formula' })
+				});
+				if (res.ok) {
+					const data = await res.json();
+					if (data.formula) {
+						formula = data.formula;
+						mw = calcMW(formula);
+					}
+				}
+			} catch { /* best-effort */ }
+		} else if (newName.trim() && !smiles) {
+			// Try to resolve SMILES from compound name (only if formula isn't SMILES)
 			try {
 				const res = await fetch('/api/smiles', {
 					method: 'POST',
@@ -124,7 +147,10 @@
 				});
 				if (res.ok) {
 					const data = await res.json();
-					if (data.smiles) smiles = data.smiles;
+					// Only use if it looks like a valid SMILES (not just the name echoed back)
+					if (data.smiles && isSmiles(data.smiles)) {
+						smiles = data.smiles;
+					}
 				}
 			} catch { /* SMILES resolution is best-effort */ }
 		}
@@ -138,7 +164,7 @@
 			body: JSON.stringify({
 				notebook_id: notebookId,
 				name: newName || 'Untitled Compound',
-				formula: newFormula,
+				formula,
 				molar_mass: mw,
 				smiles,
 				reaction_id: newReactionId || null,

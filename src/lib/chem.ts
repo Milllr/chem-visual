@@ -49,6 +49,26 @@ const MONOISOTOPIC_MASSES: Record<string, number> = {
 	Bi: 208.9803987000, Th: 232.0380553000, Pa: 231.0358840000, U: 238.0507882000
 };
 
+/**
+ * Detect if a string looks like a SMILES notation.
+ * SMILES typically contain special characters like =, #, @, \, /, (, ), [, ]
+ * and ring closures (digits after atoms).
+ */
+export function isSmiles(str: string): boolean {
+	if (!str || str.length < 2) return false;
+	// Must start with an atom (C, c, N, n, O, o, S, s, P, F, Cl, Br, I, [) or stereochem
+	if (!/^[A-Za-z\[\\\/(]/.test(str)) return false;
+	// Contains SMILES-specific characters
+	const smilesChars = /[=#@\\\/\[\]]/.test(str);
+	// Contains ring closures (digit after letter)
+	const ringClosure = /[A-Za-z]\d/.test(str);
+	// Lowercase aromatic atoms
+	const aromatic = /[cnops]/.test(str);
+	// Has bonds or branch notation
+	const hasBonds = /[\(\)=#]/.test(str);
+	return smilesChars || ringClosure || (aromatic && hasBonds);
+}
+
 /** Common mass spec adduct ions with their mass offsets and charge */
 export const MS_ADDUCTS = [
 	{ label: '[M+H]⁺', delta: 1.0072764522, charge: '+', mode: 'pos' },

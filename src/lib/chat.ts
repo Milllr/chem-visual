@@ -235,6 +235,33 @@ export async function smilesToName(smiles: string, apiKey: string): Promise<stri
 	return content.trim();
 }
 
+export async function smilesToFormula(smiles: string, apiKey: string): Promise<string> {
+	const res = await fetch('https://api.openai.com/v1/chat/completions', {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${apiKey}`
+		},
+		body: JSON.stringify({
+			model: 'gpt-5-mini',
+			messages: [
+				{
+					role: 'developer',
+					content:
+						'Convert the SMILES string to a molecular formula. Return ONLY the molecular formula in Hill notation (C first, then H, then other elements alphabetically). For example: C6H12O6 or C2H5NO2. Do not include any explanation, just the formula.'
+				},
+				{ role: 'user', content: smiles }
+			],
+			max_completion_tokens: 256
+		})
+	});
+	if (!res.ok) throw new Error('Formula conversion failed');
+	const data: any = await res.json();
+	const content = data.choices?.[0]?.message?.content;
+	if (!content) throw new Error('Empty formula response');
+	return content.trim();
+}
+
 export async function generateExperimental(
 	reactionData: {
 		name: string;
