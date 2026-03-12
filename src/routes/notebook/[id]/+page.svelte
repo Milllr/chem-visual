@@ -61,6 +61,17 @@
 	let scanStepCount = $state(0);
 	let scanStepTotal = $state(0);
 
+	// Reliable scroll to a newly created block
+	async function scrollToBlock(blockId: string) {
+		await tick();
+		requestAnimationFrame(() => {
+			setTimeout(() => {
+				const el = document.getElementById(`block-${blockId}`);
+				if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			}, 50);
+		});
+	}
+
 	// Reaction timers
 	let timers = $state<Array<{ id: string; label: string; duration: number; remaining: number; running: boolean; startedAt?: number }>>([]);
 
@@ -117,11 +128,7 @@
 		if (res.ok) {
 			const block: Block = await res.json();
 			blocks = [...blocks, block];
-			// Scroll to new block after render
-			requestAnimationFrame(() => {
-				const el = document.getElementById(`block-${block.id}`);
-				el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			});
+			await scrollToBlock(block.id);
 		}
 	}
 
@@ -154,10 +161,7 @@
 		if (res.ok) {
 			const block: Block = await res.json();
 			blocks = [...blocks, block];
-			requestAnimationFrame(() => {
-				const el = document.getElementById(`block-${block.id}`);
-				el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			});
+			await scrollToBlock(block.id);
 		}
 	}
 
@@ -213,6 +217,7 @@
 			if (res.ok) {
 				const block: Block = await res.json();
 				blocks = [...blocks, block];
+				await scrollToBlock(block.id);
 			}
 		} catch (err) {
 			console.error('Image upload error:', err);
@@ -250,6 +255,7 @@
 				const block: Block = await blockRes.json();
 				blocks = [...blocks, block];
 				moleculeInputOpen = false;
+				await scrollToBlock(block.id);
 			}
 		} catch (err) {
 			console.error('Molecule error:', err);
@@ -371,6 +377,7 @@
 		if (res.ok) {
 			const block: Block = await res.json();
 			blocks = [...blocks, block];
+			await scrollToBlock(block.id);
 		}
 	}
 
@@ -435,6 +442,7 @@
 				if (res.ok) {
 					const block: Block = await res.json();
 					blocks = [...blocks, block];
+					await scrollToBlock(block.id);
 				}
 			}
 		} catch (err) {
@@ -485,6 +493,7 @@
 				if (res.ok) {
 					const block: Block = await res.json();
 					blocks = [...blocks, block];
+					await scrollToBlock(block.id);
 				}
 			}
 		} catch (err) {
@@ -587,6 +596,7 @@
 			if (res.ok) {
 				const block: Block = await res.json();
 				blocks = [...blocks, block];
+				await scrollToBlock(block.id);
 			}
 		} catch (err) {
 			console.error('Document upload error:', err);
@@ -614,6 +624,7 @@
 			if (res.ok) {
 				const block: Block = await res.json();
 				blocks = [...blocks, block];
+				await scrollToBlock(block.id);
 			}
 		} catch (err) {
 			console.error('Data upload error:', err);
@@ -777,6 +788,7 @@
 					if (res.ok) {
 						const block: Block = await res.json();
 						blocks = [...blocks, block];
+						await scrollToBlock(block.id);
 					}
 				} catch (err) {
 					console.error('Paste image error:', err);
@@ -797,6 +809,7 @@
 			if (res.ok) {
 				const block: Block = await res.json();
 				blocks = [...blocks, block];
+				await scrollToBlock(block.id);
 			}
 		}
 	}
@@ -1032,9 +1045,7 @@
 			const block = await res.json();
 			blocks = [...blocks, block];
 			libraryOpen = false;
-			await tick();
-			const el = document.getElementById(`block-${block.id}`);
-			if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			await scrollToBlock(block.id);
 		}
 	}}
 />
