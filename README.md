@@ -1,4 +1,4 @@
-# chem journal
+# chem visual
 
 my personal chemistry lab notebook with a built-in AI assistant. i wanted something that feels like a lab notebook but lives in the browser, with molecule visualization, camera capture, and AI chat that understands chemistry context.
 
