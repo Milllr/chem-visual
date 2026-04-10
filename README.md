@@ -1,92 +1,46 @@
-# 🧪 Chem Journal
+# chem journal
 
-Personal chemistry lab notebook & AI assistant — hosted at **majogendron.com**.
+my personal chemistry lab notebook with a built-in AI assistant. i wanted something that feels like a lab notebook but lives in the browser, with molecule visualization, camera capture, and AI chat that understands chemistry context.
 
-Built with SvelteKit + Cloudflare (Pages, D1, R2). 100% free hosting.
+live at [majogendron.com](https://majogendron.com)
 
-## Quick Start (Local Dev)
+## what it does
+
+- **notebook-based projects** - each lab project gets its own colored notebook
+- **block-based pages** - text, images (camera capture on mobile), molecule structures, AI responses
+- **molecule visualizer** - type a formula, name, or SMILES notation and get a pencil-style structural drawing
+- **per-notebook AI chat** - GPT for tutoring, Perplexity for research. pin responses into your pages
+- **mobile-first** - designed for phone use at the bench
+- **single-user auth** - password login with signed session cookies
+
+## stack
+
+**languages:** TypeScript, SQL
+
+**frameworks:** SvelteKit 2, Svelte 5
+
+**infra:** Cloudflare Pages, D1, R2. runs entirely on Cloudflare's free tier
+
+**libraries & API's:** smiles-drawer, OpenAI, Perplexity
+
+## local dev
 
 ```bash
 npm install
-npm run db:local          # Initialize local D1 database
-npm run dev               # Start dev server → http://localhost:5173
+npm run db:local
+npm run dev
 ```
 
-In dev mode, **any password** works on the login page (no `AUTH_PASSWORD_HASH` set).
+in dev mode, any password works on the login page.
 
-## Deploy to Cloudflare
-
-### 1. Create resources
+## deploy
 
 ```bash
-# Login to Cloudflare
 npx wrangler login
-
-# Create D1 database
-npx wrangler d1 create chem-journal
-# → Copy the database_id and paste it into wrangler.toml
-
-# Create R2 bucket
+npx wrangler d1 create chem-journal     # copy database_id to wrangler.toml
 npx wrangler r2 bucket create chem-journal-uploads
-
-# Initialize remote schema
 npm run db:remote
-```
-
-### 2. Set secrets
-
-```bash
-# Generate a password hash
-echo -n "YOUR_PASSWORD" | shasum -a 256 | awk '{print $1}'
-
-# Set secrets
-npx wrangler pages secret put AUTH_PASSWORD_HASH
-npx wrangler pages secret put AUTH_SECRET
-npx wrangler pages secret put OPENAI_API_KEY
-npx wrangler pages secret put PERPLEXITY_API_KEY
-```
-
-### 3. Deploy
-
-```bash
 npm run deploy
 ```
 
-### 4. Point domain
-
-In Cloudflare Dashboard → Pages → your project → Custom domains → Add `majogendron.com`.
-
-Make sure your domain's DNS is managed by Cloudflare (free plan).
-
-## Architecture
-
-| Layer | Tech | Free Tier |
-|-------|------|-----------|
-| Frontend | SvelteKit 2 + Svelte 5 | — |
-| Hosting | Cloudflare Pages | 500 deploys/mo, unlimited bandwidth |
-| Backend | CF Workers (via Pages Functions) | 100K req/day |
-| Database | Cloudflare D1 (SQLite) | 5M reads/day, 5 GB |
-| Storage | Cloudflare R2 | 10 GB, free egress |
-| Molecules | smiles-drawer | — |
-| AI Chat | OpenAI GPT-4o + Perplexity Sonar | Pay per use |
-| Fonts | Virgil (Excalidraw) + System UI | OFL / System |
-
-## Features
-
-- **Notebook-based projects** — each lab project is a colored notebook
-- **Block-based pages** — text, images (camera capture), molecule structures, AI responses
-- **Molecule visualizer** — type a formula (C3H8), name (propane), or SMILES (CCC) and get a pencil-style structural drawing
-- **Per-notebook AI chat** — GPT-4o for tutoring, Perplexity for research. Pin responses into your notebook pages
-- **Mobile-first** — designed for phone use in the lab. Bottom action bar, large touch targets, camera capture
-- **Single-user auth** — simple password login with signed session cookies
-
-## Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start dev server |
-| `npm run build` | Production build |
-| `npm run deploy` | Build + deploy to Cloudflare Pages |
-| `npm run db:local` | Initialize local D1 schema |
-| `npm run db:remote` | Initialize remote D1 schema |
-| `npm run check` | TypeScript + Svelte type checking |
+secrets are set via `npx wrangler pages secret put <KEY>`, see `.env.example` for what's needed.
