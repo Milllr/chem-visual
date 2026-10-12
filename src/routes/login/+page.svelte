@@ -67,5 +67,9 @@
 		<p class="text-center text-xs text-muted/40 mt-10">
 			majogendron.com
 		</p>
+		<!-- credit: links mllr.ca through its tracked link /r/chem -->
+		<p class="text-center text-[10px] text-muted/40 mt-1">
+			by <a href="https://mllr.ca/r/chem" class="hover:text-muted transition-colors">Miller Downey</a>
+		</p>
 	</div>
 </div>
